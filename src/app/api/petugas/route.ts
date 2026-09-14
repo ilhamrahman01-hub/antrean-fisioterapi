@@ -8,20 +8,23 @@ const PETUGAS_PIN = process.env.PETUGAS_PIN || 'praci123';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const pin = searchParams.get('pin');
+  const tanggal = searchParams.get('tanggal');
 
   if (pin !== PETUGAS_PIN) {
     return NextResponse.json({ success: false, message: 'PIN Petugas tidak valid' }, { status: 401 });
   }
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const targetDate = tanggal || todayStr;
+  
   const all = readAllAntrean();
-  const todayList = all.filter(a => a.tanggalKunjungan === todayStr);
+  const targetList = all.filter(a => a.tanggalKunjungan === targetDate);
   const state = getPoliState();
 
   return NextResponse.json({
     success: true,
     data: {
-      antreanList: todayList,
+      antreanList: targetList,
       poliState: state
     }
   });

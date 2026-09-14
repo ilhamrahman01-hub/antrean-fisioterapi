@@ -27,7 +27,7 @@ export default function TicketCard({ antrean, onCancelSuccess }: Props) {
       const res = await fetch(`/api/antrean/${antrean.id}/batal`, { method: 'POST' });
       const data = await res.json();
       if (res.ok && data.success) {
-        setStatusMessage('Antrean berhasil dibatalkan. Kuota telah dikembalikan.');
+        setStatusMessage('Antrean dibatalkan. Kuota telah dikembalikan.');
         setCancelModal(false);
         if (onCancelSuccess) onCancelSuccess();
       } else {
@@ -40,199 +40,155 @@ export default function TicketCard({ antrean, onCancelSuccess }: Props) {
     }
   }
 
-  function handlePrintOrSave() {
-    window.print();
-  }
+  const tglClean = antrean.tanggalKunjungan.replace(/-/g, '');
+  const gcalLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=Fisioterapi+Puskesmas+Pracimantoro+1&dates=${tglClean}T010000Z/${tglClean}T050000Z&details=Kunjungan+Poli+Fisioterapi.+Nomor+Antrean:+${antrean.nomorAntrean}.+Kode+Tiket:+${antrean.kodeTiket}&location=Puskesmas+Pracimantoro+1`;
 
   return (
-    <div className="space-y-4">
-      {/* Physical-metaphor Ticket Container (e-Karcis) */}
+    <div className="w-full space-y-12">
+      {/* Karcis Utama */}
       <div 
         id="ticket-print-area"
-        className="w-full bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden transition-all duration-300 relative"
+        className="w-full bg-white border border-zinc-200 p-8 sm:p-12 relative"
       >
-        {/* Ticket Header */}
-        <div className="bg-emerald-800 text-white p-4 relative">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="flex items-center space-x-1 text-emerald-200 text-xs font-semibold uppercase tracking-wider">
-                <span>🏥</span>
-                <span>PUSKESMAS PRACIMANTORO 1</span>
-              </div>
-              <h2 className="text-lg font-bold text-white mt-0.5">Poli Fisioterapi</h2>
-            </div>
-            <div>
-              {isCancelled ? (
-                <span className="bg-rose-500/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
-                  Dibatalkan
-                </span>
-              ) : isDone ? (
-                <span className="bg-slate-700 text-slate-200 text-[11px] font-bold px-2.5 py-1 rounded-full">
-                  Selesai
-                </span>
-              ) : (
-                <span className="bg-white/20 backdrop-blur-md text-emerald-100 text-[11px] font-bold px-2.5 py-1 rounded-full border border-white/20">
-                  ✓ Terkonfirmasi Resmi
-                </span>
-              )}
-            </div>
+        {/* Header Karcis */}
+        <div className="flex justify-between items-start border-b border-zinc-200 pb-6 mb-8">
+          <div>
+            <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-1">
+              Dokumen Resmi
+            </span>
+            <h2 className="text-2xl font-serif font-black text-brand-dark">Karcis Fisioterapi</h2>
+          </div>
+          <div>
+            {isCancelled ? (
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                Dibatalkan
+              </span>
+            ) : isDone ? (
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">
+                Selesai
+              </span>
+            ) : (
+              <span className="text-xs font-bold text-brand-primary uppercase tracking-widest">
+                Terkonfirmasi
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Ticket Center: Big Calling Number */}
-        <div className="p-4 flex flex-col items-center justify-center bg-emerald-50/50 border-b border-dashed border-emerald-200">
-          <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-            Nomor Antrean Anda
+        {/* Nomor Raksasa */}
+        <div className="text-center mb-12">
+          <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-4">
+            Nomor Panggilan
           </span>
-          <div className="my-1.5 px-7 py-2.5 bg-white rounded-2xl border-2 border-emerald-500/30 shadow-sm text-center">
-            <span className={`text-4xl font-black font-mono tracking-tight ${isCancelled ? 'line-through text-slate-400' : 'text-emerald-800'}`}>
+          <div className="inline-block px-12 py-6 border-2 border-brand-dark">
+            <span className={`text-6xl font-serif font-black tracking-tighter ${isCancelled ? 'line-through text-zinc-300' : 'text-brand-dark'}`}>
               {antrean.nomorAntrean}
             </span>
           </div>
-          <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/70 px-3 py-0.5 rounded-full mt-0.5">
-            👥 Urutan ke-{parseInt(antrean.nomorAntrean.replace('FISIO-', ''), 10)} dari Kuota 10 Pasien
-          </span>
+          <p className="text-sm font-medium text-zinc-500 mt-6">
+            Urutan ke-{parseInt(antrean.nomorAntrean.replace('FISIO-', ''), 10)} dari kuota harian.
+          </p>
         </div>
 
-        {/* Ticket Details */}
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Tanggal Kunjungan</span>
-              <span className="font-bold text-slate-800">{formatTanggalIndo(antrean.tanggalKunjungan)}</span>
-            </div>
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Jam Layanan</span>
-              <span className="font-bold text-slate-800">08.00 - 12.00 WIB</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+        {/* Data Pasien */}
+        <div className="space-y-6 border-t border-zinc-200 pt-8 mb-10">
+          <div className="flex flex-col sm:flex-row justify-between gap-6">
             <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Pasien</span>
-              <span className="font-bold text-slate-900 text-sm">{antrean.namaPasien}</span>
-              <span className="text-xs text-slate-500 block font-mono">NIK: {maskNIK(antrean.nik)}</span>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-1">Pasien</span>
+              <span className="font-bold text-brand-dark text-lg">{antrean.namaPasien}</span>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md">
-              BPJS / UMUM
-            </span>
+            <div className="sm:text-right">
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-1">Jalur Layanan</span>
+              <span className="font-bold text-brand-dark text-lg">UMUM / BPJS</span>
+            </div>
           </div>
 
-          {/* QR Code */}
-          <div className="flex flex-col items-center justify-center p-3 bg-white border border-slate-100 rounded-xl">
-            <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-200">
-              <QRCodeSVG 
-                value={antrean.kodeTiket} 
-                size={130}
-                level="M"
-              />
+          <div className="flex flex-col sm:flex-row justify-between gap-6">
+            <div>
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-1">Jadwal</span>
+              <span className="font-bold text-brand-dark text-lg">{formatTanggalIndo(antrean.tanggalKunjungan)}</span>
             </div>
-            <span className="font-mono text-xs font-semibold text-slate-600 mt-2">
-              {antrean.kodeTiket}
-            </span>
-            <span className="text-[11px] text-slate-400 text-center mt-0.5">
-              Tunjukkan QR Code ini ke petugas loket atau poli fisioterapi
-            </span>
+            <div className="sm:text-right">
+              <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-1">NIK</span>
+              <span className="font-bold text-brand-dark text-lg">{maskNIK(antrean.nik)}</span>
+            </div>
           </div>
+        </div>
+
+        {/* QR Code */}
+        <div className="flex flex-col items-center justify-center p-8 bg-zinc-50">
+          <QRCodeSVG 
+            value={antrean.kodeTiket} 
+            size={120}
+            level="M"
+            fgColor="#0f2922"
+          />
+          <span className="font-medium text-sm text-zinc-500 mt-4 tracking-widest">
+            {antrean.kodeTiket}
+          </span>
         </div>
       </div>
 
       {statusMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl text-center font-semibold">
+        <div className="p-4 bg-brand-dark text-white text-sm font-bold uppercase tracking-widest text-center">
           {statusMessage}
         </div>
       )}
 
       {/* Action Buttons */}
       {!isCancelled && (
-        <div className="space-y-2">
-          {/* Tombol Kirim ke WhatsApp */}
+        <div className="space-y-4">
           <a
             href={waLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition"
+            className="w-full py-5 bg-brand-dark hover:bg-black text-white text-sm font-bold uppercase tracking-widest text-center block transition"
           >
-            <span>💬</span>
-            <span>Simpan & Kirim Karcis ke WhatsApp</span>
+            Kirim Karcis ke WhatsApp
+          </a>
+          
+          <a
+            href={gcalLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-5 bg-brand-primary hover:opacity-90 text-white text-sm font-bold uppercase tracking-widest text-center block transition"
+          >
+            Simpan ke Google Calendar
           </a>
 
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={handlePrintOrSave}
-              className="py-2.5 px-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
-            >
-              <span>📥</span>
-              <span>Cetak / PDF Karcis</span>
-            </button>
-
+          <div className="flex flex-col sm:flex-row gap-4 pt-2">
             <button
               onClick={() => setCancelModal(true)}
-              className="py-2.5 px-3 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              className="w-full py-4 border border-zinc-300 text-zinc-500 hover:bg-zinc-50 hover:text-black text-xs font-bold uppercase tracking-widest transition"
             >
-              <span>❌</span>
-              <span>Batalkan Antrean</span>
+              Batalkan Antrean
             </button>
           </div>
         </div>
       )}
 
-      {/* Panduan Kedatangan Pasien */}
-      <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 space-y-2.5 text-xs text-slate-700">
-        <h4 className="font-bold text-emerald-950 flex items-center gap-1.5 text-sm">
-          <span>💡</span> Panduan Kedatangan Pasien
-        </h4>
-        <div className="space-y-2">
-          <div className="flex items-start gap-2">
-            <span className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-900 font-bold flex items-center justify-center text-[11px] shrink-0 mt-0.5">
-              1
-            </span>
-            <p>
-              <strong>Hadir 10–15 Menit Lebih Awal:</strong> Lakukan verifikasi berkas fisik (KTP/Kartu BPJS) di loket pendaftaran puskesmas.
-            </p>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-900 font-bold flex items-center justify-center text-[11px] shrink-0 mt-0.5">
-              2
-            </span>
-            <p>
-              <strong>Gunakan Pakaian Nyaman:</strong> Kenakan celana elastis atau pakaian olahraga yang memudahkan manuver gerak fisik dan latihan sendi.
-            </p>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-900 font-bold flex items-center justify-center text-[11px] shrink-0 mt-0.5">
-              3
-            </span>
-            <p>
-              <strong>Tunjukkan Karcis Digital Ini:</strong> Langsung arahkan layar handphone Anda ke petugas loket atau perawat jaga poli.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal Konfirmasi Pembatalan */}
+      {/* Modal Batal */}
       {cancelModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-xl">
-            <h3 className="text-base font-bold text-slate-900">Batalkan Antrean Fisioterapi?</h3>
-            <p className="text-xs text-slate-600">
-              Apakah Anda yakin ingin membatalkan nomor antrean <strong>{antrean.nomorAntrean}</strong>? 
-              Slot ini akan dikembalikan ke kuota umum agar dapat dipesan oleh pasien lain yang membutuhkan.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 p-6 backdrop-blur-sm">
+          <div className="bg-white border border-zinc-200 p-8 sm:p-12 max-w-md w-full shadow-2xl space-y-8 text-center">
+            <h3 className="text-2xl font-serif font-black text-brand-dark">Konfirmasi Pembatalan</h3>
+            <p className="text-zinc-500 font-medium leading-relaxed">
+              Anda akan membatalkan antrean <strong>{antrean.nomorAntrean}</strong>. Slot ini akan dikembalikan ke sistem.
             </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                disabled={cancelling}
-                onClick={() => setCancelModal(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
-              >
-                Kembali
-              </button>
+            <div className="flex flex-col gap-4">
               <button
                 disabled={cancelling}
                 onClick={handleConfirmCancel}
-                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl flex items-center gap-1.5"
+                className="w-full py-4 bg-brand-dark text-white text-sm font-bold uppercase tracking-widest hover:bg-black transition"
               >
-                {cancelling ? 'Membatalkan...' : 'Ya, Batalkan'}
+                {cancelling ? 'MEMPROSES...' : 'YA, BATALKAN ANTREAN'}
+              </button>
+              <button
+                disabled={cancelling}
+                onClick={() => setCancelModal(false)}
+                className="w-full py-4 text-zinc-500 text-sm font-bold uppercase tracking-widest hover:text-black transition"
+              >
+                KEMBALI
               </button>
             </div>
           </div>

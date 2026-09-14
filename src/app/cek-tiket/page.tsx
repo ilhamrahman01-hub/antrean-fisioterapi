@@ -32,7 +32,6 @@ export default function CekTiketPage() {
         return;
       }
 
-      // Simpan ke LocalStorage agar diingat perangkat
       if (typeof window !== 'undefined') {
         localStorage.setItem('active_ticket_id', json.data.id);
         localStorage.setItem('active_ticket_code', json.data.kodeTiket);
@@ -46,95 +45,65 @@ export default function CekTiketPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-white">
       <Header />
 
-      <main className="flex-1 max-w-md w-full mx-auto p-4 sm:p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <Link
-            href="/"
-            className="text-xs font-semibold text-slate-600 hover:text-emerald-700 flex items-center gap-1 transition"
-          >
-            ← Kembali ke Beranda
-          </Link>
+      <main className="flex-1 max-w-2xl w-full mx-auto px-6 py-20">
+        <div className="mb-12 border-b border-zinc-200 pb-12">
+          <h2 className="text-4xl font-serif font-black text-brand-dark mb-4">Cari Karcis Anda</h2>
+          <p className="text-lg text-zinc-500 font-medium leading-relaxed">
+            Tidak perlu login. Cukup masukkan NIK atau Kode Tiket yang Anda peroleh saat mendaftar.
+          </p>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="text-center space-y-1">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-2xl mx-auto mb-2">
-              🔍
-            </div>
-            <h2 className="text-lg font-bold text-slate-900">Cek Status & Karcis Saya</h2>
-            <p className="text-xs text-slate-500">
-              Tidak perlu login/akun. Cukup masukkan NIK atau Kode Tiket Anda.
-            </p>
+        {error && (
+          <div className="mb-8 p-6 bg-brand-dark text-white text-sm font-bold uppercase tracking-widest text-center">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSearch} className="space-y-12">
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4">
+              Nomor Induk Kependudukan (NIK) / Kode Karcis
+            </label>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Contoh: 3312011234560001"
+              className="w-full py-4 bg-transparent border-b-2 border-zinc-200 text-brand-dark text-3xl font-medium focus:outline-none focus:border-brand-dark transition placeholder-zinc-300"
+              required
+            />
           </div>
 
-          {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2">
-              <span>⚠️</span>
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleSearch} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                NIK Pasien atau Kode Tiket
-              </label>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Contoh: 3312011234560001 / PKM-FISIO..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition"
-                required
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Bisa menggunakan 16 digit NIK atau kode tiket yang didapat saat mendaftar.
-              </p>
-            </div>
-
+          <div className="pt-4 flex flex-col sm:flex-row gap-6">
             <button
               type="submit"
               disabled={loading}
-              className={`w-full py-3 rounded-xl font-bold text-sm text-white transition shadow-sm flex items-center justify-center gap-2 ${
+              className={`flex-1 py-6 font-bold text-sm uppercase tracking-widest transition ${
                 loading
-                  ? 'bg-slate-400 cursor-not-allowed'
-                  : 'bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99]'
+                  ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                  : 'bg-brand-dark text-white hover:bg-black'
               }`}
             >
-              {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  <span>Mencari Karcis...</span>
-                </>
-              ) : (
-                <>
-                  <span>🔎</span>
-                  <span>Cari Karcis Antrean</span>
-                </>
-              )}
+              {loading ? 'MENCARI DATA...' : 'CARI KARCIS SEKARANG'}
             </button>
-          </form>
-        </div>
+            <Link
+              href="/"
+              className="flex-1 py-6 border border-zinc-300 text-brand-dark hover:bg-zinc-50 font-bold text-sm uppercase tracking-widest transition text-center"
+            >
+              KEMBALI KE BERANDA
+            </Link>
+          </div>
+        </form>
 
-        <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-4 text-xs text-slate-700 space-y-1">
-          <p className="font-bold text-emerald-900">💡 Belum memiliki nomor antrean?</p>
-          <p className="text-slate-600">
-            Anda dapat mendaftar langsung di halaman utama tanpa biaya sepeser pun.
-          </p>
-          <Link
-            href="/"
-            className="inline-block mt-2 font-bold text-emerald-800 underline hover:text-emerald-950"
-          >
-            Ambil Nomor Antrean Baru ➔
-          </Link>
-        </div>
       </main>
 
-      <footer className="mt-auto bg-white border-t border-slate-200 py-4 px-4 text-center text-xs text-slate-400">
-        PUSKESMAS PRACIMANTORO 1 &copy; 2026 • Sistem Antrean Mandiri Fisioterapi
+      <footer className="border-t border-zinc-200 py-12 text-center">
+        <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+          Puskesmas Pracimantoro 1 &copy; 2026
+        </span>
       </footer>
     </div>
   );

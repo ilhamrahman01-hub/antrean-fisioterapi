@@ -55,58 +55,65 @@ export default function TiketPage() {
   }, [id]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-white">
       <Header />
 
-      <main className="flex-1 max-w-lg w-full mx-auto p-4 sm:p-6 space-y-4">
-        <div className="flex items-center justify-between">
+      <main className="flex-1 max-w-4xl w-full mx-auto px-6 py-12 sm:px-12 sm:py-20 space-y-16">
+        <div className="flex items-center justify-between border-b border-zinc-200 pb-6">
           <Link
             href="/"
-            className="text-xs font-semibold text-slate-600 hover:text-emerald-700 flex items-center gap-1 transition"
+            className="text-sm font-bold text-zinc-400 hover:text-brand-dark uppercase tracking-widest transition underline-offset-4 hover:underline"
           >
-            ← Kembali ke Beranda
+            Kembali ke Beranda
           </Link>
-          <span className="text-xs text-slate-400 font-mono">
-            ID: {id?.slice(0, 12)}...
+          <span className="text-sm font-bold text-zinc-300 uppercase tracking-widest">
+            KARCIS ID: {id?.slice(0, 12)}
           </span>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-200">
-            <span className="inline-block w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-2"></span>
-            <p>Memuat karcis antrean...</p>
+          <div className="py-24 text-center text-sm font-bold tracking-widest uppercase text-zinc-400">
+            <p>Memuat Data Karcis...</p>
           </div>
         ) : error || !antrean ? (
-          <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 space-y-3">
-            <div className="text-3xl">🔍</div>
-            <h3 className="text-sm font-bold text-slate-900">Karcis Tidak Ditemukan</h3>
-            <p className="text-xs text-slate-500">{error || 'Periksa kembali kode tiket Anda.'}</p>
+          <div className="py-20 text-center border-t border-b border-zinc-200 space-y-6">
+            <h3 className="text-3xl font-serif font-black text-brand-dark">Karcis Tidak Ditemukan</h3>
+            <p className="text-zinc-500 font-medium">{error || 'Periksa kembali kode tiket Anda.'}</p>
             <Link
               href="/cek-tiket"
-              className="inline-block text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl"
+              className="inline-block mt-4 text-sm font-bold text-brand-dark border-b-2 border-brand-dark pb-1 hover:text-black hover:border-black transition"
             >
-              Cari Karcis via NIK ➔
+              Cari Karcis via NIK
             </Link>
           </div>
         ) : (
-          <>
-            {/* Live Queue Monitor Status */}
-            <LiveQueueBanner
-              statusPoli={statusPoli}
-              userQueueNumber={antrean.nomorAntrean}
-            />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 lg:gap-24 items-start">
+            <div className="lg:col-span-6 space-y-12">
+              <div>
+                <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4">
+                  Monitor Antrean Langsung
+                </h2>
+                <LiveQueueBanner
+                  statusPoli={statusPoli}
+                  userQueueNumber={antrean.nomorAntrean}
+                />
+              </div>
+            </div>
 
-            {/* Ticket Card Component */}
-            <TicketCard
-              antrean={antrean}
-              onCancelSuccess={() => loadData()}
-            />
-          </>
+            <div className="lg:col-span-6">
+              <TicketCard
+                antrean={antrean}
+                onCancelSuccess={() => loadData()}
+              />
+            </div>
+          </div>
         )}
       </main>
 
-      <footer className="mt-auto bg-white border-t border-slate-200 py-4 px-4 text-center text-xs text-slate-400">
-        PUSKESMAS PRACIMANTORO 1 &copy; 2026 • Sistem Antrean Mandiri Fisioterapi
+      <footer className="border-t border-zinc-200 py-12 text-center">
+        <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+          Puskesmas Pracimantoro 1 &copy; 2026
+        </span>
       </footer>
     </div>
   );

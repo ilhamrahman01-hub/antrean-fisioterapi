@@ -1,22 +1,23 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Inter, Playfair_Display } from 'next/font/google';
+import './globals.css';
+
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair' });
 
 export const metadata: Metadata = {
-  title: "Antrean Fisioterapi - Puskesmas Pracimantoro 1",
-  description: "Sistem Pengambilan Antrean & Cek Kuota Poli Fisioterapi Puskesmas Pracimantoro 1",
+  title: 'Antrean Fisioterapi - Puskesmas Pracimantoro 1',
+  description: 'Sistem pendaftaran dan pemantauan antrean Fisioterapi Puskesmas Pracimantoro 1.',
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="id">
-      <head>
-        <meta name="theme-color" content="#00685f" />
-      </head>
-      <body className="min-h-screen bg-slate-50 antialiased flex flex-col">
+      <body className={`${inter.variable} ${playfair.variable} font-sans bg-white text-zinc-900 selection:bg-emerald-900 selection:text-white`}>
         {children}
       </body>
     </html>

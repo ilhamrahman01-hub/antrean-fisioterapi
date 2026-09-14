@@ -142,7 +142,14 @@ export function getOperationalDaysQuota(): KuotaHari[] {
       let catatan = 'Peluang antrean masih sangat leluasa';
       let isBisaDaftar = sisaKuota > 0;
 
-      if (sisaKuota === 0) {
+      const todayStr = getFormattedDate(now);
+      const isPastCutoffToday = (dateStr === todayStr && now.getHours() >= 12);
+
+      if (isPastCutoffToday) {
+        status = 'PENUH';
+        catatan = 'Pendaftaran ditutup (melewati jam 12:00 WIB)';
+        isBisaDaftar = false;
+      } else if (sisaKuota === 0) {
         status = 'PENUH';
         catatan = 'Pendaftaran ditutup karena kuota maksimal 10 telah tercapai';
       } else if (sisaKuota <= 3) {
@@ -183,16 +190,31 @@ export function bookAntrean(params: {
 }): { success: boolean; antrean?: Antrean; message?: string } {
   const allAntrean = readAllAntrean();
   
-  // 1. Cek apakah NIK sudah terdaftar aktif pada tanggal yang sama
-  const existing = allAntrean.find(
-    a => a.tanggalKunjungan === params.tanggalKunjungan && 
-         a.nik === params.nik && 
-         a.status !== 'BATAL'
-  );
-  if (existing) {
+  // 1. Cek batas 1x per minggu (Senin - Minggu)
+  const [y, m, d] = params.tanggalKunjungan.split('-').map(Number);
+  const targetDate = new Date(y, m - 1, d);
+  const day = targetDate.getDay(); // 0 = Minggu, 1 = Senin, dst.
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  
+  const monday = new Date(targetDate);
+  monday.setDate(targetDate.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+  
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  const existingThisWeek = allAntrean.find(a => {
+    if (a.nik !== params.nik || a.status === 'BATAL') return false;
+    const [ay, am, ad] = a.tanggalKunjungan.split('-').map(Number);
+    const aDate = new Date(ay, am - 1, ad);
+    return aDate >= monday && aDate <= sunday;
+  });
+
+  if (existingThisWeek) {
     return {
       success: false,
-      message: `NIK ${params.nik} sudah memiliki antrean aktif (${existing.nomorAntrean}) pada tanggal ${formatTanggalIndo(params.tanggalKunjungan)}.`
+      message: `Mohon maaf, NIK ${params.nik} sudah terdaftar untuk sesi Fisioterapi minggu ini pada tanggal ${formatTanggalIndo(existingThisWeek.tanggalKunjungan)}. Sesuai aturan, 1 Pasien hanya bisa mendaftar 1 kali dalam sepekan (Senin-Minggu).`
     };
   }
 

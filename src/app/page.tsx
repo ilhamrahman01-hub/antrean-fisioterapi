@@ -3,43 +3,28 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
-import LiveQueueBanner from '@/components/LiveQueueBanner';
 import QuotaCard from '@/components/QuotaCard';
 import RegistrationForm from '@/components/RegistrationForm';
 import { KuotaHari, StatusPoli } from '@/lib/types';
 
 export default function Home() {
   const [kuotaList, setKuotaList] = useState<KuotaHari[]>([]);
-  const [statusPoli, setStatusPoli] = useState<StatusPoli>({
-    poliName: 'Poli Fisioterapi',
-    ruangan: 'Ruang 103 (Lantai 1)',
-    antreanSekarang: 'FISIO-02',
-    totalHariIni: 3,
-    sisaMenunggu: 1,
-    jamLayanan: '08.00 - 12.00 WIB'
-  });
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [savedTicketId, setSavedTicketId] = useState<string | null>(null);
 
   useEffect(() => {
-    // 1. Cek apakah di browser HP ini sudah ada karcis aktif tersimpan
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('active_ticket_id');
       if (stored) setSavedTicketId(stored);
     }
 
-    // 2. Fetch data kuota harian & status antrean
     async function loadData() {
       try {
         const res = await fetch('/api/kuota');
         const json = await res.json();
         if (json.success && json.data) {
           setKuotaList(json.data.kuota || []);
-          if (json.data.statusPoli) {
-            setStatusPoli(json.data.statusPoli);
-          }
-          // Pilih hari pertama yang masih tersedia kuotanya secara default
           const available = (json.data.kuota || []).find((k: KuotaHari) => k.isBisaDaftar);
           if (available) {
             setSelectedDate(available.tanggal);
@@ -55,86 +40,74 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-white">
       <Header />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Banner Auto-Detect Tiket yang Tersimpan di Perangkat Ini */}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-5 py-6 sm:px-8 sm:py-10">
+        
+        {/* Banner Auto-Detect Tiket */}
         {savedTicketId && (
-          <div className="bg-emerald-800 text-white rounded-2xl p-4 shadow-md flex items-center justify-between gap-3 border border-emerald-700">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🎟️</span>
-              <div>
-                <h4 className="font-bold text-sm">Anda Memiliki Karcis Antrean Aktif</h4>
-                <p className="text-xs text-emerald-200">
-                  Karcis fisioterapi tersimpan di perangkat ini. Klik untuk melihat nomor dan memantau giliran.
-                </p>
-              </div>
+          <div className="bg-brand-dark text-white p-5 sm:p-6 mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+            <div>
+              <h4 className="font-serif font-black text-lg tracking-wide">Karcis Aktif Terdeteksi</h4>
+              <p className="text-sm text-zinc-300 font-medium mt-1 leading-relaxed">
+                Sistem mendeteksi bahwa Anda telah memiliki nomor antrean di perangkat ini.
+              </p>
             </div>
             <Link
               href={`/tiket/${savedTicketId}`}
-              className="bg-white text-emerald-900 px-4 py-2 rounded-xl text-xs font-bold hover:bg-emerald-50 transition shrink-0 shadow-sm"
+              className="bg-white text-brand-dark px-6 py-3 text-xs font-bold uppercase tracking-widest hover:bg-brand-light transition shrink-0 text-center"
             >
-              Lihat Karcis ➔
+              Lihat Karcis
             </Link>
           </div>
         )}
 
-        {/* Hero Banner Puskesmas */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center text-2xl shrink-0">
-              🩺
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider bg-emerald-50 px-2 py-0.5 rounded-md">
-                  Unit Rehabilitasi Medik
-                </span>
-                <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  Aktif
-                </span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
-                Poli Fisioterapi Puskesmas Pracimantoro 1
-              </h1>
-              <p className="text-xs text-slate-500 mt-1">
-                Layanan terapi fisik intensif 1-on-1. Buka <strong>Senin s/d Kamis (08.00–12.00 WIB)</strong>. Kuota maksimal <strong>10 Pasien/hari</strong>.
-              </p>
-            </div>
+        {/* Editorial Hero Section */}
+        <div className="mb-10 grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
+          <div className="md:col-span-8">
+            <p className="text-xs font-bold text-brand-primary uppercase tracking-widest mb-3">
+              Layanan Rawat Jalan
+            </p>
+            <h1 className="text-3xl sm:text-4xl font-serif font-black text-brand-dark tracking-tight leading-[1.1]">
+              Reservasi Antrean<br/>Poli Fisioterapi.
+            </h1>
+            <p className="text-sm text-zinc-500 font-medium mt-4 max-w-xl leading-relaxed">
+              Fasilitas terapi fisik intensif dengan kapasitas layanan eksklusif maksimal 10 pasien per hari demi menjaga kualitas penanganan.
+            </p>
           </div>
-
-          <div className="flex sm:flex-col gap-2 shrink-0 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
-            <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Jadwal Praktik</span>
-              <span className="font-bold text-slate-700">Senin – Kamis</span>
+          
+          <div className="md:col-span-4 border-l-2 border-zinc-200 pl-5">
+            <div className="mb-4">
+              <span className="text-zinc-400 block text-[10px] uppercase font-bold tracking-widest mb-1">Jadwal Operasional</span>
+              <span className="font-bold text-zinc-900 text-sm">Senin – Kamis</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Kapasitas Maksimal</span>
-              <span className="font-bold text-emerald-700">10 Pasien / Hari</span>
+              <span className="text-zinc-400 block text-[10px] uppercase font-bold tracking-widest mb-1">Jam Layanan</span>
+              <span className="font-bold text-zinc-900 text-sm">08.00 – 12.00 WIB</span>
             </div>
           </div>
         </div>
 
-        {/* Notice Hari Tutup */}
-        <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl px-4 py-2.5 text-xs text-amber-900 flex items-center gap-2">
-          <span>📅</span>
-          <span>
-            <strong>Jumat, Sabtu, Minggu & Libur Nasional: TUTUP.</strong> Pendaftaran dibuka untuk pekan berjalan & pekan depan.
-          </span>
-        </div>
+        <hr className="border-t border-zinc-200 mb-10" />
 
-        {/* Responsif Desktop Split Layout (2 Kolom di Desktop, 1 Kolom di HP) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Kolom Kiri: Live Monitor Antrean & Daftar Kuota Harian (5 Cols) */}
-          <div className="lg:col-span-5 space-y-5">
-            <LiveQueueBanner statusPoli={statusPoli} />
-
+        {/* Unified Registration Flow */}
+        <div className="max-w-2xl mx-auto space-y-12">
+          
+          {/* Tahap 1: Pilih Jadwal */}
+          <section className="space-y-5">
+            <div className="border-b border-zinc-200 pb-3">
+              <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest block mb-1">
+                Langkah 1 dari 2
+              </span>
+              <h2 className="font-serif font-black text-xl text-brand-dark">
+                Pilih Jadwal Kedatangan
+              </h2>
+            </div>
+            
             {loading ? (
-              <div className="p-8 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-200">
-                <span className="inline-block w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-2"></span>
-                <p>Memuat ketersediaan kuota...</p>
+              <div className="py-8 text-center text-xs font-bold tracking-widest uppercase text-zinc-400">
+                Memuat data jadwal...
               </div>
             ) : (
               <QuotaCard
@@ -143,42 +116,33 @@ export default function Home() {
                 onSelectDate={(t) => setSelectedDate(t)}
               />
             )}
-          </div>
+          </section>
 
-          {/* Kolom Kanan: Form Pendaftaran (7 Cols) */}
-          <div className="lg:col-span-7">
+          {/* Tahap 2: Data Pasien */}
+          <section className="space-y-5">
+            <div className="border-b border-zinc-200 pb-3">
+              <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest block mb-1">
+                Langkah 2 dari 2
+              </span>
+              <h2 className="font-serif font-black text-xl text-brand-dark">
+                Lengkapi Data Pasien
+              </h2>
+            </div>
+
             <RegistrationForm
               kuotaList={kuotaList}
               selectedDate={selectedDate}
               onSelectDate={(t) => setSelectedDate(t)}
             />
-          </div>
-        </div>
+          </section>
 
-        {/* Informasi & Syarat Kunjungan */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3">
-          <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-            <span>ℹ️</span> Informasi & Syarat Kunjungan Poli Fisioterapi
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-slate-600">
-            <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-xl">
-              <span>🗓️</span>
-              <p>
-                <strong>Pendaftaran Terbuka:</strong> Pasien atau keluarga dapat memesan nomor antrean mulai H-7 hingga H-1 sebelum tanggal kedatangan.
-              </p>
-            </div>
-            <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-xl">
-              <span>🪪</span>
-              <p>
-                <strong>Bawa Berkas Fisik:</strong> Harap membawa KTP asli dan Kartu BPJS Kesehatan aktif untuk verifikasi berkas di loket pendaftaran.
-              </p>
-            </div>
-          </div>
         </div>
       </main>
 
-      <footer className="mt-auto bg-white border-t border-slate-200 py-4 px-4 text-center text-xs text-slate-400">
-        PUSKESMAS PRACIMANTORO 1 &copy; 2026 • Sistem Antrean Mandiri Fisioterapi
+      <footer className="border-t border-zinc-200 py-6 text-center">
+        <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
+          Puskesmas Pracimantoro 1 &copy; 2026
+        </span>
       </footer>
     </div>
   );

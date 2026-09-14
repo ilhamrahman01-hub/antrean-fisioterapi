@@ -9,7 +9,7 @@ interface Props {
 }
 
 export default function LiveQueueBanner({ statusPoli, userQueueNumber }: Props) {
-  const currentNum = statusPoli.antreanSekarang || 'Belum dimulai';
+  const currentNum = statusPoli.antreanSekarang || '-';
   const total = statusPoli.totalHariIni || 0;
 
   // Hitung estimasi jika user memiliki tiket hari ini
@@ -22,65 +22,57 @@ export default function LiveQueueBanner({ statusPoli, userQueueNumber }: Props) 
     }
   }
 
-  const percentage = total > 0 && statusPoli.antreanSekarang 
-    ? Math.min(100, Math.round((parseInt(statusPoli.antreanSekarang.replace('FISIO-', '')) / 10) * 100))
-    : 10;
-
   return (
-    <div className="w-full bg-slate-900 text-white rounded-2xl p-4 shadow-md relative overflow-hidden">
-      {/* Decorative gradient overlay */}
-      <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full bg-emerald-600/20 blur-2xl pointer-events-none" />
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-          </span>
-          <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
-            Antrean Aktif Sekarang
-          </span>
-        </div>
-        <span className="text-[11px] font-medium bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-700">
-          Poli Fisioterapi
-        </span>
-      </div>
-
-      <div className="mt-3 flex items-end justify-between">
+    <div className="w-full border-b-2 border-brand-dark pb-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
         <div>
-          <p className="text-xs text-slate-400 font-medium">
-            Sedang Dilayani di {statusPoli.ruangan}
+          <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest block mb-4">
+            Status Layanan Saat Ini
+          </span>
+          <p className="text-sm text-brand-dark font-bold uppercase tracking-widest">
+            {statusPoli.poliName}
           </p>
-          <div className="flex items-baseline space-x-2 mt-0.5">
-            <span className="text-3xl font-extrabold text-white tracking-tight font-mono">
-              {currentNum}
-            </span>
-            <span className="text-xs text-slate-400 font-medium">
-              / 10 Pasien
-            </span>
+          <p className="text-sm text-zinc-500 font-medium mt-1">
+            {statusPoli.ruangan}
+          </p>
+        </div>
+        
+        <div className="text-left sm:text-right">
+          <span className="text-7xl font-serif font-black text-brand-dark tracking-tighter leading-none block">
+            {currentNum}
+          </span>
+          <div className="text-sm text-zinc-500 font-medium mt-3">
+            dari batas 10 Pasien
           </div>
         </div>
-
-        {userQueueDiff !== null && userQueueDiff > 0 ? (
-          <div className="bg-emerald-950/80 border border-emerald-500/30 text-emerald-300 rounded-xl px-3 py-1.5 text-right">
-            <span className="text-xs font-bold block">{userQueueDiff} Antrean Lagi</span>
-            <span className="text-[10px] text-emerald-400/80">Est. ~{userQueueDiff * 15} mnt</span>
-          </div>
-        ) : (
-          <div className="bg-slate-800 text-slate-300 rounded-xl px-3 py-1.5 text-right border border-slate-700">
-            <span className="text-xs font-semibold block">{statusPoli.sisaMenunggu} Menunggu</span>
-            <span className="text-[10px] text-slate-400">{statusPoli.jamLayanan}</span>
-          </div>
-        )}
       </div>
 
-      {/* Progress Track Micro-visual */}
-      <div className="mt-3 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-        <div 
-          className="bg-emerald-500 h-1.5 rounded-full transition-all duration-700 ease-out" 
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
+      {userQueueDiff !== null && userQueueDiff > 0 ? (
+        <div className="mt-8 pt-6 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs text-brand-primary font-bold uppercase tracking-widest block mb-1">Status Anda</span>
+            <span className="text-lg font-bold text-brand-dark">{userQueueDiff} Antrean Lagi</span>
+          </div>
+          <div className="text-left sm:text-right">
+            <span className="text-xs text-zinc-400 font-bold uppercase tracking-widest block mb-1">Estimasi Panggilan</span>
+            <span className="text-lg font-bold text-brand-dark">~{userQueueDiff * 15} Menit</span>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-8 pt-6 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs text-zinc-400 font-bold uppercase tracking-widest block mb-1">Pasien Menunggu</span>
+            <span className="text-lg font-bold text-brand-dark">{statusPoli.sisaMenunggu} Pasien</span>
+          </div>
+          <div className="text-left sm:text-right flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-xs text-brand-primary font-bold uppercase tracking-widest">Sedang Berlangsung</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
