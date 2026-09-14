@@ -9,9 +9,17 @@ import {
   MAX_KUOTA_HARIAN
 } from './queue-rules';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const isVercel = process.env.VERCEL === '1';
+const DATA_DIR = isVercel ? '/tmp' : path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'antrean.json');
 const POLI_STATE_FILE = path.join(DATA_DIR, 'poli_state.json');
+
+// Helper untuk selalu mendapatkan waktu WIB (meskipun di server Vercel UTC)
+export function getWIBDate(): Date {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  return new Date(utc + (3600000 * 7));
+}
 
 function ensureDataFiles() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -24,40 +32,40 @@ function ensureDataFiles() {
         id: 'antrean-001',
         nomorAntrean: 'FISIO-01',
         kodeTiket: 'PKM-FISIO-20260914-01',
-        tanggalKunjungan: getFormattedDate(new Date()),
+        tanggalKunjungan: getFormattedDate(getWIBDate()),
         nik: '3312011204650001',
         namaPasien: 'Bpk. Sugeng Riyadi',
         noWa: '081234567801',
         tipePendaftar: 'MANDIRI',
         status: 'SELESAI',
-        waktuDaftar: new Date(Date.now() - 3600000 * 3).toISOString(),
-        waktuDipanggil: new Date(Date.now() - 3600000 * 2).toISOString(),
-        waktuSelesai: new Date(Date.now() - 3600000).toISOString(),
+        waktuDaftar: new Date(getWIBDate().getTime() - 3600000 * 3).toISOString(),
+        waktuDipanggil: new Date(getWIBDate().getTime() - 3600000 * 2).toISOString(),
+        waktuSelesai: new Date(getWIBDate().getTime() - 3600000).toISOString(),
       },
       {
         id: 'antrean-002',
         nomorAntrean: 'FISIO-02',
         kodeTiket: 'PKM-FISIO-20260914-02',
-        tanggalKunjungan: getFormattedDate(new Date()),
+        tanggalKunjungan: getFormattedDate(getWIBDate()),
         nik: '3312015508700002',
         namaPasien: 'Ibu Siti Aminah',
         noWa: '081234567802',
         tipePendaftar: 'KELUARGA_KADER',
         status: 'DIPANGGIL',
-        waktuDaftar: new Date(Date.now() - 3600000 * 2).toISOString(),
-        waktuDipanggil: new Date(Date.now() - 1800000).toISOString(),
+        waktuDaftar: new Date(getWIBDate().getTime() - 3600000 * 2).toISOString(),
+        waktuDipanggil: new Date(getWIBDate().getTime() - 1800000).toISOString(),
       },
       {
         id: 'antrean-003',
         nomorAntrean: 'FISIO-03',
         kodeTiket: 'PKM-FISIO-20260914-03',
-        tanggalKunjungan: getFormattedDate(new Date()),
+        tanggalKunjungan: getFormattedDate(getWIBDate()),
         nik: '3312010901580003',
         namaPasien: 'Bpk. Bambang Sutrisno',
         noWa: '081234567890',
         tipePendaftar: 'MANDIRI',
         status: 'MENUNGGU',
-        waktuDaftar: new Date(Date.now() - 3600000).toISOString(),
+        waktuDaftar: new Date(getWIBDate().getTime() - 3600000).toISOString(),
       }
     ];
     fs.writeFileSync(DATA_FILE, JSON.stringify(initialAntrean, null, 2), 'utf-8');
@@ -121,7 +129,7 @@ export function setPoliState(newState: Partial<{ antreanSekarang: string | null;
  */
 export function getOperationalDaysQuota(): KuotaHari[] {
   const allAntrean = readAllAntrean();
-  const now = new Date();
+  const now = getWIBDate();
   const days: KuotaHari[] = [];
 
   // Cari 8 hari operasional ke depan (sekitar 2 minggu)
@@ -245,7 +253,7 @@ export function bookAntrean(params: {
     noWa: params.noWa,
     tipePendaftar: params.tipePendaftar,
     status: 'MENUNGGU',
-    waktuDaftar: new Date().toISOString()
+    waktuDaftar: getWIBDate().toISOString()
   };
 
   allAntrean.push(newAntrean);
@@ -299,7 +307,7 @@ export function findAntrean(query: string): Antrean | null {
  * Status antrean poli hari ini untuk live monitor & TV.
  */
 export function getStatusPoliHariIni(): StatusPoli {
-  const todayStr = getFormattedDate(new Date());
+  const todayStr = getFormattedDate(getWIBDate());
   const allAntrean = readAllAntrean();
   const poliState = getPoliState();
 

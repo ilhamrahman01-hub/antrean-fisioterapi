@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'PIN Petugas tidak valid' }, { status: 401 });
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Date(new Date().getTime() + (7 * 3600000)).toISOString().split('T')[0];
   const targetDate = tanggal || todayStr;
   
   const all = readAllAntrean();
@@ -39,7 +39,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'PIN Petugas tidak valid' }, { status: 401 });
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const wib = new Date(utc + (3600000 * 7));
+    const todayStr = wib.toISOString().split('T')[0];
+    
     const all = readAllAntrean();
 
     if (action === 'panggil') {
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
       const target = all.find(a => a.tanggalKunjungan === todayStr && a.nomorAntrean === nomorAntrean);
       if (target) {
         target.status = 'DIPANGGIL';
-        target.waktuDipanggil = new Date().toISOString();
+        target.waktuDipanggil = wib.toISOString();
         saveAllAntrean(all);
       }
       return NextResponse.json({ success: true, message: `Memanggil ${nomorAntrean}` });
@@ -66,7 +70,7 @@ export async function POST(req: NextRequest) {
 
       setPoliState({ antreanSekarang: nextWaiting.nomorAntrean });
       nextWaiting.status = 'DIPANGGIL';
-      nextWaiting.waktuDipanggil = new Date().toISOString();
+      nextWaiting.waktuDipanggil = wib.toISOString();
       saveAllAntrean(all);
 
       return NextResponse.json({
@@ -80,7 +84,7 @@ export async function POST(req: NextRequest) {
       const target = all.find(a => a.tanggalKunjungan === todayStr && a.nomorAntrean === nomorAntrean);
       if (target) {
         target.status = 'SELESAI';
-        target.waktuSelesai = new Date().toISOString();
+        target.waktuSelesai = wib.toISOString();
         saveAllAntrean(all);
       }
       return NextResponse.json({ success: true, message: `Antrean ${nomorAntrean} ditandai selesai` });

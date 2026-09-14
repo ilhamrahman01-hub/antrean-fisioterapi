@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readAllAntrean, saveAllAntrean } from '@/lib/db';
+import { readAllAntrean, saveAllAntrean, getWIBDate } from '@/lib/db';
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -28,7 +28,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     const targetDateObj = new Date(tahun, bulan, hari, 7, 0, 0); // Jam 7 pagi hari H
     const limitTime = targetDateObj.getTime() - (12 * 60 * 60 * 1000); // 12 jam sebelumnya
     
-    if (Date.now() > limitTime) {
+    const wibNow = getWIBDate().getTime();
+    
+    if (wibNow > limitTime) {
       return NextResponse.json({ success: false, message: 'Batas waktu edit sudah habis (Maksimal H-1 pukul 19:00 WIB).' }, { status: 400 });
     }
 
