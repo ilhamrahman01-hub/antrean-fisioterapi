@@ -1,0 +1,53 @@
+[
+  {
+    "id": "antrean-001",
+    "nomorAntrean": "FISIO-01",
+    "kodeTiket": "PKM-FISIO-20260914-01",
+    "tanggalKunjungan": "2026-09-14",
+    "nik": "3312011204650001",
+    "namaPasien": "Bpk. Sugeng Riyadi",
+    "noWa": "081234567801",
+    "tipePendaftar": "MANDIRI",
+    "status": "SELESAI",
+    "waktuDaftar": "2026-09-14T05:29:27.114Z",
+    "waktuDipanggil": "2026-09-14T06:29:27.114Z",
+    "waktuSelesai": "2026-09-14T07:29:27.115Z"
+  },
+  {
+    "id": "antrean-002",
+    "nomorAntrean": "FISIO-02",
+    "kodeTiket": "PKM-FISIO-20260914-02",
+    "tanggalKunjungan": "2026-09-14",
+    "nik": "3312015508700002",
+    "namaPasien": "Ibu Siti Aminah",
+    "noWa": "081234567802",
+    "tipePendaftar": "KELUARGA_KADER",
+    "status": "DIPANGGIL",
+    "waktuDaftar": "2026-09-14T06:29:27.115Z",
+    "waktuDipanggil": "2026-09-14T07:59:27.115Z"
+  },
+  {
+    "id": "antrean-003",
+    "nomorAntrean": "FISIO-03",
+    "kodeTiket": "PKM-FISIO-20260914-03",
+    "tanggalKunjungan": "2026-09-14",
+    "nik": "3312010901580003",
+    "namaPasien": "Bpk. Bambang Sutrisno",
+    "noWa": "081234567890",
+    "tipePendaftar": "MANDIRI",
+    "status": "MENUNGGU",
+    "waktuDaftar": "2026-09-14T07:29:27.115Z"
+  },
+  {
+    "id": "antrean-1789374574751-xe4xl",
+    "nomorAntrean": "FISIO-01",
+    "kodeTiket": "PKM-FISIO-20260915-01",
+    "tanggalKunjungan": "2026-09-15",
+    "nik": "3312012304900005",
+    "namaPasien": "Bpk. Joko Widodo",
+    "noWa": "081299887766",
+    "tipePendaftar": "MANDIRI",
+    "status": "BATAL",
+    "waktuDaftar": "2026-09-14T08:29:34.751Z"
+  }
+]
