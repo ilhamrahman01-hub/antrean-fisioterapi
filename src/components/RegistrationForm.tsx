@@ -50,6 +50,8 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
 
     setLoading(true);
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
       const res = await fetch('/api/antrean', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -60,9 +62,16 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
           noWa: noWa.trim(),
           tipePendaftar: 'MANDIRI',
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        setErrorMessage('Respon server tidak terbaca. Cek karcis Anda di halaman "Cek Tiket" sebelum mendaftar ulang agar tidak double.');
+        setLoading(false);
+        return;
+      }
 
       if (!res.ok || !data.success) {
         setErrorMessage(data.message || 'Gagal mendaftarkan antrean.');
@@ -76,8 +85,12 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
       }
 
       router.push(`/tiket/${data.data.id}`);
-    } catch (err) {
-      setErrorMessage('Koneksi bermasalah. Periksa jaringan internet Anda.');
+    } catch (err: any) {
+      setErrorMessage(
+        err?.name === 'AbortError'
+          ? 'Permintaan timeout. Jangan daftar ulang dulu — cek karcis Anda di halaman "Cek Tiket" memakai NIK.'
+          : 'Koneksi bermasalah. Jika sudah menekan tombol sekali, cek "Cek Tiket" dulu sebelum mencoba lagi agar tidak double.'
+      );
       setLoading(false);
     }
   }

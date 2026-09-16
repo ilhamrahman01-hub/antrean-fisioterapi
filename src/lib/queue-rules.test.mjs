@@ -3,6 +3,8 @@ import assert from 'node:assert';
 import {
   isOperationalDay,
   formatQueueNumber,
+  parseSequence,
+  getNextSequence,
   validateNIK,
   validateWhatsApp,
   maskNIK,
@@ -27,10 +29,24 @@ test('isOperationalDay returns true for Senin s/d Kamis, false for Jumat-Minggu'
   assert.strictEqual(isOperationalDay(new Date(2026, 8, 20)), false);
 });
 
-test('formatQueueNumber formats 1 to FISIO-01 and 10 to FISIO-10', () => {
-  assert.strictEqual(formatQueueNumber(1), 'FISIO-01');
-  assert.strictEqual(formatQueueNumber(6), 'FISIO-06');
-  assert.strictEqual(formatQueueNumber(10), 'FISIO-10');
+test('formatQueueNumber formats 1 to 01 and 10 to 10', () => {
+  assert.strictEqual(formatQueueNumber(1), '01');
+  assert.strictEqual(formatQueueNumber(6), '06');
+  assert.strictEqual(formatQueueNumber(10), '10');
+});
+
+test('parseSequence accepts new and legacy formats', () => {
+  assert.strictEqual(parseSequence('01'), 1);
+  assert.strictEqual(parseSequence('10'), 10);
+  assert.strictEqual(parseSequence('FISIO-01'), 1);
+  assert.strictEqual(parseSequence('FISIO-10'), 10);
+});
+
+test('getNextSequence is monotonic: cancelled slots are not reused', () => {
+  // 01 issued then cancelled, 02-03 active -> next is 04, never 01 again
+  assert.strictEqual(getNextSequence([1, 2, 3]), 4);
+  assert.strictEqual(getNextSequence([]), 1);
+  assert.strictEqual(getNextSequence([1, 3]), 4);
 });
 
 test('validateNIK validates exact 16 numeric digits', () => {
@@ -51,5 +67,6 @@ test('maskNIK masks 6 middle digits correctly', () => {
 });
 
 test('generateKodeTiket creates formatted ticket code', () => {
+  assert.strictEqual(generateKodeTiket('2024-11-06', '06'), 'PKM-FISIO-20241106-06');
   assert.strictEqual(generateKodeTiket('2024-11-06', 'FISIO-06'), 'PKM-FISIO-20241106-06');
 });

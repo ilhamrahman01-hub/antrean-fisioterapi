@@ -50,7 +50,7 @@ export function speakQueueNumber(nomorAntrean: string) {
   playChimeBell();
 
   setTimeout(() => {
-    const digits = nomorAntrean.replace('FISIO-', '');
+    const digits = (nomorAntrean || '').replace(/\D/g, '').slice(-2);
     const numInt = parseInt(digits, 10);
     const text = `Nomor antrean, Fisioterapi, ${numInt}. Silakan masuk ke Ruang seratus tiga.`;
 

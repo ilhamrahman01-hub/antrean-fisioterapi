@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { StatusPoli } from '@/lib/types';
+import { parseSequence } from '@/lib/queue-rules';
 
 interface Props {
   statusPoli: StatusPoli;
@@ -15,8 +16,8 @@ export default function LiveQueueBanner({ statusPoli, userQueueNumber }: Props) 
   // Hitung estimasi jika user memiliki tiket hari ini
   let userQueueDiff = null;
   if (userQueueNumber && statusPoli.antreanSekarang) {
-    const currentSeq = parseInt(statusPoli.antreanSekarang.replace('FISIO-', ''), 10);
-    const userSeq = parseInt(userQueueNumber.replace('FISIO-', ''), 10);
+    const currentSeq = parseSequence(statusPoli.antreanSekarang || '');
+    const userSeq = parseSequence(userQueueNumber || '');
     if (!isNaN(currentSeq) && !isNaN(userSeq)) {
       userQueueDiff = userSeq - currentSeq;
     }

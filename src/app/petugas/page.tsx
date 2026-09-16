@@ -10,8 +10,13 @@ export default function PetugasPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinError, setPinError] = useState('');
   
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [selectedDate, setSelectedDate] = useState(todayStr);
+  function getWibTodayStr(): string {
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    return new Date(utc + 3600000 * 7).toISOString().split('T')[0];
+  }
+
+  const [selectedDate, setSelectedDate] = useState(getWibTodayStr());
   
   const [antreanList, setAntreanList] = useState<Antrean[]>([]);
   const [loadingAction, setLoadingAction] = useState(false);

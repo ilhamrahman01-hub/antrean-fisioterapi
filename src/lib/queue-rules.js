@@ -6,8 +6,18 @@ export function isOperationalDay(date) {
 }
 
 export function formatQueueNumber(sequence) {
-  const padded = sequence.toString().padStart(2, '0');
-  return `FISIO-${padded}`;
+  return sequence.toString().padStart(2, '0');
+}
+
+export function parseSequence(nomorAntrean) {
+  const digits = (nomorAntrean || '').replace(/\D/g, '').slice(-2);
+  const n = parseInt(digits, 10);
+  return isNaN(n) ? 0 : n;
+}
+
+export function getNextSequence(issued) {
+  const max = issued.length ? Math.max(...issued) : 0;
+  return max + 1;
 }
 
 export function validateNIK(nik) {
@@ -52,6 +62,6 @@ export function formatTanggalIndo(dateStr) {
 
 export function generateKodeTiket(tanggal, nomorAntrean) {
   const cleanDate = tanggal.replace(/-/g, '');
-  const seq = nomorAntrean.replace('FISIO-', '');
+  const seq = parseSequence(nomorAntrean).toString().padStart(2, '0');
   return `PKM-FISIO-${cleanDate}-${seq}`;
 }

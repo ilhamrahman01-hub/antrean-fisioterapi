@@ -6,6 +6,8 @@ import {
   generateKodeTiket,
   formatTanggalIndo,
   isOperationalDay,
+  parseSequence,
+  getNextSequence,
   MAX_KUOTA_HARIAN
 } from './queue-rules';
 
@@ -21,58 +23,22 @@ export function getWIBDate(): Date {
   return new Date(utc + (3600000 * 7));
 }
 
+function normalizeNomor(nomor: string): string {
+  const digits = (nomor || '').replace(/\D/g, '').slice(-2);
+  const n = parseInt(digits, 10);
+  return isNaN(n) ? nomor : n.toString().padStart(2, '0');
+}
+
 function ensureDataFiles() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
   if (!fs.existsSync(DATA_FILE)) {
-    // Seed dengan beberapa data dummy awal yang realistis (seperti contoh screen Stitch)
-    const initialAntrean: Antrean[] = [
-      {
-        id: 'antrean-001',
-        nomorAntrean: 'FISIO-01',
-        kodeTiket: 'PKM-FISIO-20260914-01',
-        tanggalKunjungan: getFormattedDate(getWIBDate()),
-        nik: '3312011204650001',
-        namaPasien: 'Bpk. Sugeng Riyadi',
-        noWa: '081234567801',
-        tipePendaftar: 'MANDIRI',
-        status: 'SELESAI',
-        waktuDaftar: new Date(getWIBDate().getTime() - 3600000 * 3).toISOString(),
-        waktuDipanggil: new Date(getWIBDate().getTime() - 3600000 * 2).toISOString(),
-        waktuSelesai: new Date(getWIBDate().getTime() - 3600000).toISOString(),
-      },
-      {
-        id: 'antrean-002',
-        nomorAntrean: 'FISIO-02',
-        kodeTiket: 'PKM-FISIO-20260914-02',
-        tanggalKunjungan: getFormattedDate(getWIBDate()),
-        nik: '3312015508700002',
-        namaPasien: 'Ibu Siti Aminah',
-        noWa: '081234567802',
-        tipePendaftar: 'KELUARGA_KADER',
-        status: 'DIPANGGIL',
-        waktuDaftar: new Date(getWIBDate().getTime() - 3600000 * 2).toISOString(),
-        waktuDipanggil: new Date(getWIBDate().getTime() - 1800000).toISOString(),
-      },
-      {
-        id: 'antrean-003',
-        nomorAntrean: 'FISIO-03',
-        kodeTiket: 'PKM-FISIO-20260914-03',
-        tanggalKunjungan: getFormattedDate(getWIBDate()),
-        nik: '3312010901580003',
-        namaPasien: 'Bpk. Bambang Sutrisno',
-        noWa: '081234567890',
-        tipePendaftar: 'MANDIRI',
-        status: 'MENUNGGU',
-        waktuDaftar: new Date(getWIBDate().getTime() - 3600000).toISOString(),
-      }
-    ];
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initialAntrean, null, 2), 'utf-8');
+    fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
   }
   if (!fs.existsSync(POLI_STATE_FILE)) {
     const initialState = {
-      antreanSekarang: 'FISIO-02',
+      antreanSekarang: null as string | null,
       ruangan: 'Ruang 103 (Lantai 1)',
       jamLayanan: '08.00 - 12.00 WIB'
     };
@@ -91,7 +57,19 @@ export function readAllAntrean(): Antrean[] {
   ensureDataFiles();
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Antrean[];
+    // Migrasi sekali jalan: format lama "FISIO-01" -> "01", kode tiket diselaraskan.
+    let migrated = false;
+    for (const a of parsed) {
+      const fixed = normalizeNomor(a.nomorAntrean);
+      if (fixed !== a.nomorAntrean) { a.nomorAntrean = fixed; migrated = true; }
+      const expectedKode = generateKodeTiket(a.tanggalKunjungan, a.nomorAntrean);
+      if (a.kodeTiket !== expectedKode && a.kodeTiket.startsWith('PKM-FISIO-')) { a.kodeTiket = expectedKode; migrated = true; }
+    }
+    if (migrated) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+    }
+    return parsed;
   } catch (err) {
     return [];
   }
@@ -106,10 +84,14 @@ export function getPoliState() {
   ensureDataFiles();
   try {
     const raw = fs.readFileSync(POLI_STATE_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.antreanSekarang === 'string') {
+      parsed.antreanSekarang = normalizeNomor(parsed.antreanSekarang);
+    }
+    return parsed;
   } catch {
     return {
-      antreanSekarang: 'FISIO-01',
+      antreanSekarang: null,
       ruangan: 'Ruang 103',
       jamLayanan: '08.00 - 12.00 WIB'
     };
@@ -119,9 +101,23 @@ export function getPoliState() {
 export function setPoliState(newState: Partial<{ antreanSekarang: string | null; ruangan: string; jamLayanan: string }>) {
   ensureDataFiles();
   const current = getPoliState();
-  const updated = { ...current, ...newState };
+  const payload = { ...newState };
+  if (typeof payload.antreanSekarang === 'string') {
+    payload.antreanSekarang = normalizeNomor(payload.antreanSekarang);
+  }
+  const updated = { ...current, ...payload };
   fs.writeFileSync(POLI_STATE_FILE, JSON.stringify(updated, null, 2), 'utf-8');
   return updated;
+}
+
+/**
+ * Ambil semua antrean untuk satu tanggal, diurut numerik 01-10.
+ * Termasuk yang BATAL supaya nomor tidak pernah dipakai ulang.
+ */
+export function getAntreanByTanggal(tanggal: string): Antrean[] {
+  return readAllAntrean()
+    .filter(a => a.tanggalKunjungan === tanggal)
+    .sort((a, b) => parseSequence(a.nomorAntrean) - parseSequence(b.nomorAntrean));
 }
 
 /**
@@ -197,7 +193,16 @@ export function bookAntrean(params: {
   tipePendaftar: Antrean['tipePendaftar'];
 }): { success: boolean; antrean?: Antrean; message?: string } {
   const allAntrean = readAllAntrean();
-  
+
+  // 0. Idempotensi double-submit: NIK yang sudah punya tiket AKTIF di tanggal
+  // yang sama langsung dikembalikan (bukan error, bukan tiket ganda).
+  const existingSameDay = allAntrean.find(
+    a => a.tanggalKunjungan === params.tanggalKunjungan && a.nik === params.nik && a.status !== 'BATAL'
+  );
+  if (existingSameDay) {
+    return { success: true, antrean: existingSameDay };
+  }
+
   // 1. Cek batas 1x per minggu (Senin - Minggu)
   const [y, m, d] = params.tanggalKunjungan.split('-').map(Number);
   const targetDate = new Date(y, m - 1, d);
@@ -226,10 +231,11 @@ export function bookAntrean(params: {
     };
   }
 
-  // 2. Hitung kuota yang sudah terisi di tanggal tersebut
-  const activeCount = allAntrean.filter(
-    a => a.tanggalKunjungan === params.tanggalKunjungan && a.status !== 'BATAL'
-  ).length;
+  // 2. Hitung kuota yang sudah terisi di tanggal tersebut (BATAL tidak dihitung)
+  const dayList = allAntrean.filter(
+    a => a.tanggalKunjungan === params.tanggalKunjungan
+  );
+  const activeCount = dayList.filter(a => a.status !== 'BATAL').length;
 
   if (activeCount >= MAX_KUOTA_HARIAN) {
     return {
@@ -238,8 +244,15 @@ export function bookAntrean(params: {
     };
   }
 
-  // 3. Tentukan nomor antrean berikutnya (nomor urut 1-10)
-  const nextSequence = activeCount + 1;
+  // 3. Nomor selalu naik monotonik: max semua nomor yang pernah diterbitkan + 1.
+  // Slot yang dibatalkan hangus (tidak dipakai ulang) sehingga tidak ada nomor kembar.
+  const nextSequence = getNextSequence(dayList.map(a => parseSequence(a.nomorAntrean)));
+  if (nextSequence > MAX_KUOTA_HARIAN) {
+    return {
+      success: false,
+      message: `Mohon maaf, nomor antrean untuk ${formatTanggalIndo(params.tanggalKunjungan)} sudah habis (maksimal 10 nomor per hari).`
+    };
+  }
   const nomorAntrean = formatQueueNumber(nextSequence);
   const kodeTiket = generateKodeTiket(params.tanggalKunjungan, nomorAntrean);
 
@@ -266,12 +279,13 @@ export function bookAntrean(params: {
 }
 
 /**
- * Pembatalan antrean mandiri oleh pasien (mengembalikan kuota).
+ * Pembatalan antrean mandiri oleh pasien (kuota aktif berkurang 1,
+ * tetapi nomor yang dibatalkan hangus dan tidak diterbitkan ulang).
  */
 export function cancelAntrean(idOrKodeTiket: string): { success: boolean; message: string } {
   const allAntrean = readAllAntrean();
   const index = allAntrean.findIndex(
-    a => a.id === idOrKodeTiket || a.kodeTiket === idOrKodeTiket || a.nomorAntrean === idOrKodeTiket
+    a => a.id === idOrKodeTiket || a.kodeTiket === idOrKodeTiket
   );
 
   if (index === -1) {
@@ -292,15 +306,44 @@ export function cancelAntrean(idOrKodeTiket: string): { success: boolean; messag
 }
 
 /**
- * Cari antrean berdasarkan ID atau Kode Tiket atau NIK.
+ * Cari antrean berdasarkan ID, Kode Tiket, atau NIK.
+ * Sengaja TIDAK mencari by nomor antrean (01-10 berulang tiap hari,
+ * rawan kena tiket orang lain) dan TIDAK by nomor WA (bukan identitas unik).
+ * Untuk NIK yang punya banyak tiket, kembalikan yang terbaru dan belum BATAL.
  */
 export function findAntrean(query: string): Antrean | null {
   const clean = query.trim();
+  if (!clean) return null;
   const allAntrean = readAllAntrean();
-  
-  return allAntrean.find(
-    a => a.id === clean || a.kodeTiket === clean || a.nomorAntrean === clean || a.nik === clean
-  ) || null;
+
+  const byIdOrKode = allAntrean.find(
+    a => a.id === clean || a.kodeTiket === clean
+  );
+  if (byIdOrKode) return byIdOrKode;
+
+  // Nomor WA bukan kunci pencarian yang valid (bisa berubah / dipakai bersama).
+  const digitsOnly = clean.replace(/\D/g, '');
+  if (/^(08|628)\d{8,12}$/.test(clean.replace(/[\s-+]/g, ''))) {
+    return null;
+  }
+
+  const byNik = allAntrean
+    .filter(a => a.nik === clean || a.nik === digitsOnly)
+    .sort((a, b) => b.waktuDaftar.localeCompare(a.waktuDaftar));
+  if (!byNik.length) return null;
+  return byNik.find(a => a.status !== 'BATAL') || byNik[0];
+}
+
+/**
+ * Urutan antrean pasien pada tanggal kunjungannya (1-based),
+ * dihitung dari posisi waktuDaftar di antara tiket aktif hari itu.
+ */
+export function getQueuePosition(antrean: Antrean): number {
+  const dayActive = readAllAntrean()
+    .filter(a => a.tanggalKunjungan === antrean.tanggalKunjungan && a.status !== 'BATAL')
+    .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar));
+  const idx = dayActive.findIndex(a => a.id === antrean.id);
+  return idx === -1 ? 0 : idx + 1;
 }
 
 /**

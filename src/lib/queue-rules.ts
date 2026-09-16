@@ -10,11 +10,29 @@ export function isOperationalDay(date: Date): boolean {
 }
 
 /**
- * Format urutan antrean menjadi kode resmi FISIO-01 s/d FISIO-10.
+ * Format urutan antrean menjadi angka saja 01 s/d 10.
  */
 export function formatQueueNumber(sequence: number): string {
-  const padded = sequence.toString().padStart(2, '0');
-  return `FISIO-${padded}`;
+  return sequence.toString().padStart(2, '0');
+}
+
+/**
+ * Ambil urutan numerik dari nomor antrean.
+ * Menerima format baru ("01") maupun lama ("FISIO-01") untuk migrasi.
+ */
+export function parseSequence(nomorAntrean: string): number {
+  const digits = (nomorAntrean || '').replace(/\D/g, '').slice(-2);
+  const n = parseInt(digits, 10);
+  return isNaN(n) ? 0 : n;
+}
+
+/**
+ * Nomor berikutnya selalu monotonik naik: max(nomor yang pernah diterbitkan) + 1.
+ * Slot yang dibatalkan hangus dan tidak dipakai ulang (anti nomor kembar).
+ */
+export function getNextSequence(issued: number[]): number {
+  const max = issued.length ? Math.max(...issued) : 0;
+  return max + 1;
 }
 
 /**
@@ -70,10 +88,12 @@ export function formatTanggalIndo(dateStr: string): string {
 }
 
 /**
- * Generate Kode Tiket Resmi Unik: PKM-FISIO-YYYYMMDD-XX
+ * Generate Kode Tiket Unik: PKM-FISIO-YYYYMMDD-XX
+ * Dibuat unik per tanggal+nomor; bila nomor dipakai ulang antar-hari,
+ * tanggal membuat kodenya tetap unik. Id tiket (UUID) tetap kunci utama.
  */
 export function generateKodeTiket(tanggal: string, nomorAntrean: string): string {
   const cleanDate = tanggal.replace(/-/g, '');
-  const seq = nomorAntrean.replace('FISIO-', '');
+  const seq = parseSequence(nomorAntrean).toString().padStart(2, '0');
   return `PKM-FISIO-${cleanDate}-${seq}`;
 }

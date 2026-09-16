@@ -111,13 +111,13 @@ export default function PanduanPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
             <div className="prose prose-zinc">
               <p>
-                Setelah berhasil mendaftar, pasien akan mendapatkan <strong>Karcis Digital</strong> (contoh: FISIO-07).
+                Setelah berhasil mendaftar, pasien akan mendapatkan <strong>Karcis Digital</strong> (contoh: 07).
               </p>
               <p>Karcis ini sangat informatif dan memuat beberapa fitur canggih:</p>
               <ol>
                 <li><strong>Simpan ke Google Calendar:</strong> Pasien bisa langsung memasukkan jadwal ini ke kalender HP mereka (Otomatis membunyikan alarm H-1).</li>
                 <li><strong>Bagikan via WhatsApp:</strong> Pasien dapat mengirim rangkuman tiket ke nomor WA keluarga.</li>
-                <li><strong>Batalkan Antrean:</strong> Apabila berhalangan, pasien dapat membatalkan kunjungan dengan memasukkan NIK. Kuota akan otomatis dikembalikan ke dalam sistem.</li>
+                <li><strong>Batalkan Antrean:</strong> Apabila berhalangan, pasien dapat membatalkan kunjungan dari halaman karcis. Nomor yang dibatalkan hangus (pendaftar berikutnya mendapat nomor lanjutan) dan kuota aktif dikurangi.</li>
               </ol>
             </div>
             <div className="bg-zinc-100 p-4 rounded-sm">

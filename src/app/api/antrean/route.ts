@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { bookAntrean, findAntrean } from '@/lib/db';
+import { bookAntrean, findAntrean, getQueuePosition } from '@/lib/db';
 import { validateNIK, validateWhatsApp } from '@/lib/queue-rules';
 
 export const dynamic = 'force-dynamic';
@@ -14,10 +14,19 @@ export async function GET(req: NextRequest) {
 
   const antrean = findAntrean(q);
   if (!antrean) {
-    return NextResponse.json({ success: false, message: 'Antrean tidak ditemukan' }, { status: 404 });
+    const looksLikeWa = /^[\s\d+-]*$/.test(q) && /^(08|628)\d{8,12}$/.test(q.replace(/[\s-+]/g, ''));
+    return NextResponse.json(
+      {
+        success: false,
+        message: looksLikeWa
+          ? 'Pencarian dengan nomor WhatsApp sudah tidak didukung. Gunakan NIK atau Kode Tiket Anda.'
+          : 'Antrean tidak ditemukan. Pastikan NIK atau Kode Tiket yang dimasukkan benar.',
+      },
+      { status: 404 }
+    );
   }
 
-  return NextResponse.json({ success: true, data: antrean });
+  return NextResponse.json({ success: true, data: { ...antrean, queuePosition: getQueuePosition(antrean) } });
 }
 
 export async function POST(req: NextRequest) {
@@ -54,7 +63,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: result.message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, data: result.antrean }, { status: 201 });
+    return NextResponse.json(
+      { success: true, data: { ...result.antrean, queuePosition: getQueuePosition(result.antrean!) } },
+      { status: 201 }
+    );
   } catch (err: any) {
     return NextResponse.json(
       { success: false, message: 'Terjadi kesalahan sistem saat memproses antrean' },

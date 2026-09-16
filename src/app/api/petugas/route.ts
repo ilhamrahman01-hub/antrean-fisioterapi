@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readAllAntrean, saveAllAntrean, getPoliState, setPoliState } from '@/lib/db';
+import { readAllAntrean, saveAllAntrean, getPoliState, setPoliState, getWIBDate, getAntreanByTanggal } from '@/lib/db';
+import { parseSequence } from '@/lib/queue-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,11 +15,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ success: false, message: 'PIN Petugas tidak valid' }, { status: 401 });
   }
 
-  const todayStr = new Date(new Date().getTime() + (7 * 3600000)).toISOString().split('T')[0];
+  const todayStr = getWIBDate().toISOString().split('T')[0];
   const targetDate = tanggal || todayStr;
-  
-  const all = readAllAntrean();
-  const targetList = all.filter(a => a.tanggalKunjungan === targetDate);
+
+  const targetList = getAntreanByTanggal(targetDate).filter(a => a.status !== 'BATAL');
   const state = getPoliState();
 
   return NextResponse.json({
@@ -43,26 +43,35 @@ export async function POST(req: NextRequest) {
     const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
     const wib = new Date(utc + (3600000 * 7));
     const todayStr = wib.toISOString().split('T')[0];
-    
+
+    const normNomor = (n: string) => {
+      const d = (n || '').replace(/\D/g, '').slice(-2);
+      const v = parseInt(d, 10);
+      return isNaN(v) ? n : v.toString().padStart(2, '0');
+    };
+
     const all = readAllAntrean();
+    const matchDay = (a: (typeof all)[number], nomor: string) =>
+      a.tanggalKunjungan === todayStr && normNomor(a.nomorAntrean) === normNomor(nomor);
 
     if (action === 'panggil') {
-      // Panggil nomor spesifik
-      setPoliState({ antreanSekarang: nomorAntrean });
-      const target = all.find(a => a.tanggalKunjungan === todayStr && a.nomorAntrean === nomorAntrean);
+      // Panggil nomor spesifik (dinormalisasi agar format lama/baru cocok)
+      const nomor = normNomor(nomorAntrean);
+      setPoliState({ antreanSekarang: nomor });
+      const target = all.find(a => matchDay(a, nomor) && a.status !== 'BATAL');
       if (target) {
         target.status = 'DIPANGGIL';
         target.waktuDipanggil = wib.toISOString();
         saveAllAntrean(all);
       }
-      return NextResponse.json({ success: true, message: `Memanggil ${nomorAntrean}` });
+      return NextResponse.json({ success: true, message: `Memanggil ${nomor}` });
     }
 
     if (action === 'panggil_berikutnya') {
-      // Cari pasien berikutnya yang berstatus 'MENUNGGU'
+      // Cari pasien berikutnya yang berstatus 'MENUNGGU', urut numerik (01 < 02 < ... < 10)
       const nextWaiting = all
         .filter(a => a.tanggalKunjungan === todayStr && a.status === 'MENUNGGU')
-        .sort((a, b) => a.nomorAntrean.localeCompare(b.nomorAntrean))[0];
+        .sort((a, b) => parseSequence(a.nomorAntrean) - parseSequence(b.nomorAntrean))[0];
 
       if (!nextWaiting) {
         return NextResponse.json({ success: false, message: 'Tidak ada lagi antrean yang menunggu hari ini.' });
@@ -81,13 +90,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'selesai') {
-      const target = all.find(a => a.tanggalKunjungan === todayStr && a.nomorAntrean === nomorAntrean);
+      const nomor = normNomor(nomorAntrean);
+      const target = all.find(a => matchDay(a, nomor) && a.status !== 'BATAL');
       if (target) {
         target.status = 'SELESAI';
         target.waktuSelesai = wib.toISOString();
         saveAllAntrean(all);
       }
-      return NextResponse.json({ success: true, message: `Antrean ${nomorAntrean} ditandai selesai` });
+      return NextResponse.json({ success: true, message: `Antrean ${nomor} ditandai selesai` });
     }
 
     return NextResponse.json({ success: false, message: 'Aksi tidak dikenali' }, { status: 400 });

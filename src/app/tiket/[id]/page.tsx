@@ -12,13 +12,13 @@ export default function TiketPage() {
   const params = useParams();
   const id = params?.id as string;
 
-  const [antrean, setAntrean] = useState<Antrean | null>(null);
+  const [antrean, setAntrean] = useState<(Antrean & { queuePosition?: number }) | null>(null);
   const [statusPoli, setStatusPoli] = useState<StatusPoli>({
     poliName: 'Poli Fisioterapi',
     ruangan: 'Ruang 103 (Lantai 1)',
-    antreanSekarang: 'FISIO-02',
-    totalHariIni: 3,
-    sisaMenunggu: 1,
+    antreanSekarang: null,
+    totalHariIni: 0,
+    sisaMenunggu: 0,
     jamLayanan: '08.00 - 12.00 WIB'
   });
   const [loading, setLoading] = useState(true);
@@ -103,7 +103,14 @@ export default function TiketPage() {
             <div className="lg:col-span-6">
               <TicketCard
                 antrean={antrean}
-                onCancelSuccess={() => loadData()}
+                queuePosition={antrean.queuePosition}
+                onCancelSuccess={() => {
+                  if (typeof window !== 'undefined') {
+                    localStorage.removeItem('active_ticket_id');
+                    localStorage.removeItem('active_ticket_code');
+                  }
+                  loadData();
+                }}
               />
             </div>
           </div>

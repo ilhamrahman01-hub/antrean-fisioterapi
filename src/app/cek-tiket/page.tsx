@@ -17,7 +17,7 @@ export default function CekTiketPage() {
 
     const clean = query.trim();
     if (!clean) {
-      setError('Masukkan NIK, Kode Tiket, atau Nomor WhatsApp Anda.');
+      setError('Masukkan NIK atau Kode Tiket Anda.');
       return;
     }
 
@@ -52,7 +52,7 @@ export default function CekTiketPage() {
         <div className="mb-12 border-b border-zinc-200 pb-12">
           <h2 className="text-4xl font-serif font-black text-brand-dark mb-4">Cari Karcis Anda</h2>
           <p className="text-lg text-zinc-500 font-medium leading-relaxed">
-            Tidak perlu login. Cukup masukkan NIK atau Kode Tiket yang Anda peroleh saat mendaftar.
+            Tidak perlu login. Cukup masukkan NIK atau Kode Tiket yang Anda peroleh saat mendaftar. Jika punya lebih dari satu tiket, yang ditampilkan adalah tiket terbaru yang masih aktif.
           </p>
         </div>
 
@@ -71,10 +71,13 @@ export default function CekTiketPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Contoh: 3312011234560001"
+              placeholder="Contoh: 3312011234560001 atau PKM-FISIO-..."
               className="w-full py-4 bg-transparent border-b-2 border-zinc-200 text-brand-dark text-3xl font-medium focus:outline-none focus:border-brand-dark transition placeholder-zinc-300"
               required
             />
+            <p className="text-xs text-zinc-400 font-medium mt-3">
+              Nomor WhatsApp tidak bisa dipakai untuk mencari karcis.
+            </p>
           </div>
 
           <div className="pt-4 flex flex-col sm:flex-row gap-6">

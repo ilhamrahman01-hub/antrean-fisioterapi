@@ -8,10 +8,11 @@ import { generateWhatsAppLink } from '@/lib/whatsapp';
 
 interface Props {
   antrean: Antrean;
+  queuePosition?: number | null;
   onCancelSuccess?: () => void;
 }
 
-export default function TicketCard({ antrean, onCancelSuccess }: Props) {
+export default function TicketCard({ antrean, queuePosition, onCancelSuccess }: Props) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelModal, setCancelModal] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -86,7 +87,9 @@ export default function TicketCard({ antrean, onCancelSuccess }: Props) {
             </span>
           </div>
           <p className="text-sm font-medium text-zinc-500 mt-6">
-            Urutan ke-{parseInt(antrean.nomorAntrean.replace('FISIO-', ''), 10)} dari kuota harian.
+            {queuePosition
+              ? `Urutan ke-${queuePosition} dari kuota harian.`
+              : `Nomor antrean ${antrean.nomorAntrean} dari kuota harian.`}
           </p>
         </div>
 
