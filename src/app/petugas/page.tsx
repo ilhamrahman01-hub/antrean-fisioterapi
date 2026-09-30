@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Antrean } from '@/lib/types';
-import { maskNIK } from '@/lib/queue-rules';
+import { maskNIK, formatTanggalIndo } from '@/lib/queue-rules';
 
 export default function PetugasPage() {
   const [pin, setPin] = useState('');
@@ -17,7 +17,6 @@ export default function PetugasPage() {
   }
 
   const [selectedDate, setSelectedDate] = useState(getWibTodayStr());
-  
   const [antreanList, setAntreanList] = useState<Antrean[]>([]);
   const [loadingAction, setLoadingAction] = useState(false);
 
@@ -28,44 +27,10 @@ export default function PetugasPage() {
   const [editWa, setEditWa] = useState('');
   const [editError, setEditError] = useState('');
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedPin = sessionStorage.getItem('petugas_pin');
-      if (savedPin) {
-        verifyPin(savedPin);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated && pin) {
-      refreshData();
-    }
-  }, [selectedDate]);
-
-  async function verifyPin(inputPin: string) {
-    setPinError('');
-    try {
-      const res = await fetch(`/api/petugas?pin=${encodeURIComponent(inputPin)}&tanggal=${selectedDate}`);
-      const json = await res.json();
-      if (res.ok && json.success) {
-        setIsAuthenticated(true);
-        setAntreanList(json.data.antreanList || []);
-        sessionStorage.setItem('petugas_pin', inputPin);
-        setPin(inputPin);
-      } else {
-        setPinError(json.message || 'PIN tidak valid');
-        sessionStorage.removeItem('petugas_pin');
-      }
-    } catch {
-      setPinError('Gagal menghubungi server');
-    }
-  }
-
-  async function refreshData() {
+  const refreshData = useCallback(async () => {
     if (!pin) return;
     try {
-      const res = await fetch(`/api/petugas?pin=${encodeURIComponent(pin)}&tanggal=${selectedDate}`);
+      const res = await fetch(`/api/petugas?pin=${encodeURIComponent(pin)}&tanggal=${selectedDate}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success) {
         setAntreanList(json.data.antreanList || []);
@@ -73,21 +38,67 @@ export default function PetugasPage() {
     } catch (e) {
       console.error(e);
     }
-  }
+  }, [pin, selectedDate]);
 
-  function isEditable(tglKunjungan: string) {
-    if (!tglKunjungan) return false;
-    const tglArr = tglKunjungan.split('-');
-    const tahun = parseInt(tglArr[0]);
-    const bulan = parseInt(tglArr[1]) - 1;
-    const hari = parseInt(tglArr[2]);
-    const targetDateObj = new Date(tahun, bulan, hari, 7, 0, 0);
-    const limitTime = targetDateObj.getTime() - (12 * 60 * 60 * 1000);
-    return Date.now() < limitTime;
+  const verifyPin = useCallback(async (inputPin: string) => {
+    setPinError('');
+    try {
+      const res = await fetch(`/api/petugas?pin=${encodeURIComponent(inputPin)}&tanggal=${selectedDate}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setIsAuthenticated(true);
+        setAntreanList(json.data.antreanList || []);
+        sessionStorage.setItem('petugas_pin', inputPin);
+        setPin(inputPin);
+      } else {
+        setPinError(json.message || 'PIN tidak valid (default: praci123)');
+        sessionStorage.removeItem('petugas_pin');
+      }
+    } catch {
+      setPinError('Gagal menghubungi server');
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedPin = sessionStorage.getItem('petugas_pin');
+      if (savedPin) {
+        verifyPin(savedPin);
+      }
+    }
+  }, [verifyPin]);
+
+  useEffect(() => {
+    if (isAuthenticated && pin) {
+      refreshData();
+    }
+  }, [selectedDate, isAuthenticated, pin, refreshData]);
+
+  async function handleAction(action: 'panggil' | 'selesai' | 'batal', item: Antrean) {
+    if (action === 'batal' && !confirm(`Yakin ingin membatalkan antrean ${item.namaPasien}?`)) {
+      return;
+    }
+    setLoadingAction(true);
+    try {
+      const res = await fetch('/api/petugas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, action, antreanId: item.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refreshData();
+      } else {
+        alert(data.message || 'Gagal memproses aksi');
+      }
+    } catch {
+      alert('Gagal menghubungi server');
+    } finally {
+      setLoadingAction(false);
+    }
   }
 
   function openEditModal(item: Antrean) {
-    if (!isEditable(item.tanggalKunjungan)) return;
     setEditItem(item);
     setEditNik(item.nik);
     setEditNama(item.namaPasien);
@@ -120,311 +131,344 @@ export default function PetugasPage() {
     }
   }
 
-  async function handleSelesai(nomorAntrean: string) {
-    if (!confirm(`Tandai antrean ${nomorAntrean} sebagai SELESAI?`)) return;
-    setLoadingAction(true);
-    try {
-      await fetch('/api/petugas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin, action: 'selesai', nomorAntrean }),
-      });
-      refreshData();
-    } finally {
-      setLoadingAction(false);
-    }
-  }
+  function getWaReminderUrl(item: Antrean): string {
+    const cleanPhone = (item.noWa || '').replace(/[\s-+]/g, '');
+    let formattedPhone = cleanPhone;
+    if (cleanPhone.startsWith('0')) formattedPhone = '62' + cleanPhone.slice(1);
 
-  async function handleBatal(id: string, nomorAntrean: string) {
-    if (!confirm(`Batalkan kunjungan ${nomorAntrean}? Slot akan dikembalikan.`)) return;
-    setLoadingAction(true);
-    try {
-      await fetch(`/api/antrean/${id}/batal`, { method: 'POST' });
-      refreshData();
-    } finally {
-      setLoadingAction(false);
-    }
+    const text = 
+`*PENGINGAT KUNJUNGAN POLI FISIOTERAPI*
+*PUSKESMAS PRACIMANTORO 1*
+
+Halo Bpk/Ibu *${item.namaPasien}*,
+Mengingatkan kembali reservasi sesi Fisioterapi Anda untuk jadwal:
+📅 *${formatTanggalIndo(item.tanggalKunjungan)}*
+⏰ *Jam Layanan:* 08.00 - 12.00 WIB
+📍 *Lokasi:* Poli Fisioterapi (Ruang 103)
+🔖 *Kode Tiket:* ${item.kodeTiket}
+
+Pelayanan dilayani berdasarkan urutan kedatangan di ruang poli (First Come, First Served). Harap hadir membawa KTP & kartu BPJS asli.
+
+Terima kasih.`;
+
+    return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`;
   }
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-6">
-        <div className="w-full max-w-md space-y-12">
-          <div className="text-center border-b border-zinc-200 pb-8">
-            <h2 className="text-4xl font-serif font-black text-brand-dark mb-4">Akses Petugas</h2>
-            <p className="text-sm text-zinc-500 font-bold uppercase tracking-widest">
-              Manajemen Kunjungan Fisioterapi
-            </p>
-          </div>
+      <div className="min-h-screen flex flex-col bg-zinc-50">
+        <header className="border-b border-zinc-200 bg-white px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="font-serif font-black text-lg text-brand-dark tracking-tight">
+            Puskesmas Pracimantoro 1
+          </Link>
+          <Link href="/" className="text-xs font-bold text-zinc-500 hover:text-black uppercase tracking-wider">
+            ← Kembali ke Beranda
+          </Link>
+        </header>
 
-          {pinError && (
-            <div className="p-4 bg-brand-dark text-white text-sm font-bold uppercase tracking-widest text-center">
-              {pinError}
-            </div>
-          )}
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              verifyPin(pin);
-            }}
-            className="space-y-10"
-          >
-            <div>
-              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-widest mb-4">
-                PIN Autentikasi
-              </label>
-              <input
-                type="password"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="Masukkan PIN"
-                className="w-full py-4 bg-transparent border-b-2 border-zinc-200 text-brand-dark text-3xl text-center font-medium focus:outline-none focus:border-brand-dark transition"
-                autoFocus
-                required
-              />
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="bg-white border border-zinc-200 p-8 max-w-md w-full shadow-lg space-y-6">
+            <div className="text-center space-y-2 border-b border-zinc-100 pb-5">
+              <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest block">
+                Pusat Kendali Petugas
+              </span>
+              <h2 className="text-2xl font-serif font-black text-brand-dark">
+                Portal Petugas Fisioterapi
+              </h2>
+              <p className="text-xs text-zinc-500 font-medium">
+                Khusus petugas Poli Fisioterapi untuk melihat & memverifikasi 10 peserta harian.
+              </p>
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-6 bg-brand-dark hover:bg-black text-white font-bold text-sm uppercase tracking-widest transition"
+            {pinError && (
+              <div className="p-3 bg-red-800 text-white text-xs font-bold uppercase tracking-wider text-center">
+                {pinError}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                verifyPin(pin);
+              }}
+              className="space-y-4"
             >
-              VERIFIKASI LOG IN
-            </button>
-          </form>
-          
-          <div className="text-center">
-            <Link href="/" className="text-xs font-bold uppercase tracking-widest text-zinc-400 hover:text-black transition">
-              KEMBALI KE BERANDA
-            </Link>
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-500 uppercase tracking-widest mb-1.5">
+                  Masukkan PIN Petugas
+                </label>
+                <input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="PIN Petugas (default: praci123)"
+                  className="w-full py-2.5 px-3 border border-zinc-300 text-brand-dark text-base focus:outline-none focus:border-brand-dark transition"
+                  required
+                />
+                <p className="text-[10px] text-zinc-400 font-medium mt-1">
+                  Default PIN: <code className="bg-zinc-100 px-1 py-0.5">praci123</code> (dapat diatur di Environment Variables).
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 bg-brand-dark hover:bg-black text-white text-xs font-bold uppercase tracking-widest transition"
+              >
+                Masuk ke Portal Petugas
+              </button>
+            </form>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
 
-  // TAMPILAN MANAJEMEN KUNJUNGAN (List Only)
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <header className="bg-brand-dark text-white px-8 py-5 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col bg-zinc-50">
+      <header className="border-b border-zinc-200 bg-white px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-[10px] font-bold uppercase tracking-widest">
-            Manajemen Kunjungan
+          <span className="text-[10px] font-bold text-brand-primary uppercase tracking-widest block">
+            Portal Petugas Resmi
+          </span>
+          <h1 className="font-serif font-black text-xl text-brand-dark tracking-tight">
+            Data Peserta Fisioterapi • Puskesmas Pracimantoro 1
           </h1>
-          <p className="text-xl font-serif font-black mt-0.5">
-            Poli Fisioterapi
-          </p>
         </div>
-        <button
-          onClick={() => {
-            sessionStorage.removeItem('petugas_pin');
-            setIsAuthenticated(false);
-          }}
-          className="px-5 py-2.5 border border-zinc-600 hover:bg-zinc-800 text-white text-xs font-bold uppercase tracking-widest transition"
-        >
-          LOGOUT
-        </button>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="text-xs font-bold text-zinc-500 hover:text-black uppercase tracking-wider"
+          >
+            Lihat Web Pasien
+          </Link>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem('petugas_pin');
+              setIsAuthenticated(false);
+              setPin('');
+            }}
+            className="px-3 py-1.5 border border-zinc-300 hover:bg-zinc-100 text-zinc-600 text-xs font-bold uppercase tracking-wider transition"
+          >
+            Keluar
+          </button>
+        </div>
       </header>
 
-      <main className="max-w-7xl w-full mx-auto px-6 py-10 flex-1">
-        
-        {/* Tabel Pasien Hari Ini */}
-        <div>
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end border-b border-zinc-200 pb-4 mb-6 gap-4">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-5 py-8 space-y-6">
+        {/* Controls: Date Picker & Summary */}
+        <div className="bg-white border border-zinc-200 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div>
-              <h3 className="text-2xl font-serif font-black text-brand-dark">
-                Daftar Kunjungan Pasien
-              </h3>
-              <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mt-1">
-                Kelola status kedatangan dan penyelesaian terapi
-              </p>
-            </div>
-            <div className="flex items-center gap-4 w-full md:w-auto">
+              <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                Pilih Tanggal Kunjungan
+              </label>
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="py-2 border-b-2 border-brand-dark bg-transparent text-sm font-bold text-brand-dark focus:outline-none"
+                className="py-2 px-3 border border-zinc-300 text-sm font-bold text-brand-dark focus:outline-none focus:border-brand-dark"
               />
-              <button
-                disabled={loadingAction}
-                onClick={refreshData}
-                className="text-xs font-bold text-brand-dark uppercase tracking-widest hover:underline underline-offset-4 shrink-0"
-              >
-                {loadingAction ? 'MEMPROSES...' : 'REFRESH DATA'}
-              </button>
             </div>
+            <button
+              onClick={refreshData}
+              className="sm:self-end px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-wider transition"
+            >
+              🔄 Refresh Data
+            </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b-2 border-zinc-900 text-brand-dark uppercase font-bold text-xs tracking-widest">
-                  <th className="py-4 px-2">No. Antrean</th>
-                  <th className="py-4 px-2">Jadwal</th>
-                  <th className="py-4 px-2">Pasien</th>
-                  <th className="py-4 px-2">Kontak</th>
-                  <th className="py-4 px-2">Status</th>
-                  <th className="py-4 px-2 text-right">Aksi Manajerial</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-200">
-                {antreanList.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-12 text-center text-zinc-400 font-bold uppercase tracking-widest text-sm">
-                      Belum ada data pasien terdaftar
-                    </td>
+          <div className="flex items-center gap-6 border-t sm:border-t-0 pt-4 sm:pt-0 border-zinc-100">
+            <div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                Total Terdaftar
+              </span>
+              <span className="text-2xl font-serif font-black text-brand-dark">
+                {antreanList.length} <span className="text-xs font-normal text-zinc-400">/ 10 Pasien</span>
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+                Sisa Kuota
+              </span>
+              <span className="text-2xl font-serif font-black text-emerald-800">
+                {Math.max(0, 10 - antreanList.length)} <span className="text-xs font-normal text-zinc-400">Slot</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabel Pasien */}
+        <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-zinc-200 flex items-center justify-between">
+            <h3 className="font-serif font-black text-lg text-brand-dark">
+              Daftar Pasien ({formatTanggalIndo(selectedDate)})
+            </h3>
+            <span className="text-xs text-zinc-500 font-medium">
+              Pelayanan: First Come, First Served
+            </span>
+          </div>
+
+          {antreanList.length === 0 ? (
+            <div className="py-16 text-center text-zinc-400 text-xs font-bold uppercase tracking-widest">
+              Belum ada pasien yang mendaftar pada tanggal ini.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-400 uppercase tracking-widest text-[10px]">
+                    <th className="py-3 px-4">No</th>
+                    <th className="py-3 px-4">Kode Tiket</th>
+                    <th className="py-3 px-4">Nama Pasien</th>
+                    <th className="py-3 px-4">NIK</th>
+                    <th className="py-3 px-4">WhatsApp</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Aksi Petugas</th>
                   </tr>
-                ) : (
-                  antreanList.map((item) => (
-                    <tr key={item.id} className="hover:bg-zinc-50 transition-colors">
-                      <td className="py-5 px-2 text-xl font-serif font-black text-brand-dark">
-                        {item.nomorAntrean}
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {antreanList.map((item, idx) => (
+                    <tr key={item.id} className="hover:bg-zinc-50 transition">
+                      <td className="py-3.5 px-4 font-bold text-zinc-400">
+                        {idx + 1}
                       </td>
-                      <td className="py-5 px-2">
-                        <span className="text-sm font-bold text-brand-dark block">{item.tanggalKunjungan}</span>
+                      <td className="py-3.5 px-4 font-mono font-bold text-brand-dark">
+                        {item.kodeTiket}
                       </td>
-                      <td className="py-5 px-2">
-                        <span className="font-bold text-brand-dark text-base block">{item.namaPasien}</span>
-                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-0.5 block">NIK: {maskNIK(item.nik)}</span>
+                      <td className="py-3.5 px-4 font-bold text-brand-dark text-sm">
+                        {item.namaPasien}
                       </td>
-                      <td className="py-5 px-2">
-                        <div className="flex flex-col gap-1.5 items-start">
-                          <span className="text-sm font-bold text-brand-dark tracking-widest block">
-                            {item.noWa}
-                          </span>
-                          <a
-                            href={`https://wa.me/${item.noWa.replace(/^0/, '62')}?text=${encodeURIComponent(
-                              `Halo Bpk/Ibu ${item.namaPasien},\n\nMengingatkan jadwal kunjungan Poli Fisioterapi Puskesmas Pracimantoro 1 untuk BESOK HARI (${item.tanggalKunjungan}).\n\nMohon hadir maksimal pukul 08.00 WIB.\nNomor Antrean Anda: *${item.nomorAntrean}*\n\nJika berhalangan hadir, mohon abaikan pesan ini atau batalkan antrean melalui web pendaftaran agar kuota dapat digunakan pasien lain.\n\nTerima kasih.`
-                            )}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-block px-3 py-1.5 bg-brand-primary text-white text-[10px] font-bold uppercase tracking-widest hover:bg-brand-dark transition"
-                          >
-                            Kirim Reminder
-                          </a>
-                        </div>
+                      <td className="py-3.5 px-4 font-mono text-zinc-600">
+                        {maskNIK(item.nik)}
                       </td>
-                      <td className="py-5 px-2">
-                        <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 ${
-                          item.status === 'MENUNGGU' ? 'bg-zinc-100 text-zinc-600' : 
-                          item.status === 'SELESAI' ? 'bg-brand-dark text-white' : 
-                          'bg-red-50 text-red-700'
+                      <td className="py-3.5 px-4">
+                        <a
+                          href={getWaReminderUrl(item)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-700 hover:underline font-bold inline-flex items-center gap-1"
+                        >
+                          📱 {item.noWa}
+                        </a>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                          item.status === 'SELESAI'
+                            ? 'bg-zinc-800 text-white'
+                            : item.status === 'DIPANGGIL'
+                            ? 'bg-emerald-700 text-white'
+                            : 'bg-zinc-100 text-zinc-800'
                         }`}>
                           {item.status}
                         </span>
                       </td>
-                      <td className="py-5 px-2 text-right">
-                        {(item.status === 'MENUNGGU' || item.status === 'DIPANGGIL') && (
-                          <div className="flex justify-end gap-2">
-                            {isEditable(item.tanggalKunjungan) && (
-                              <button
-                                disabled={loadingAction}
-                                onClick={() => openEditModal(item)}
-                                className="px-4 py-2 border border-zinc-300 text-brand-dark text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 transition"
-                              >
-                                EDIT
-                              </button>
-                            )}
-                            <button
-                              disabled={loadingAction}
-                              onClick={() => handleSelesai(item.nomorAntrean)}
-                              className="px-4 py-2 bg-brand-dark text-white text-[10px] font-bold uppercase tracking-widest hover:bg-black transition"
-                            >
-                              SELESAI
-                            </button>
-                            <button
-                              disabled={loadingAction}
-                              onClick={() => handleBatal(item.id, item.nomorAntrean)}
-                              className="px-4 py-2 border border-zinc-300 text-zinc-500 text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-100 hover:text-black transition"
-                            >
-                              BATAL
-                            </button>
-                          </div>
-                        )}
+                      <td className="py-3.5 px-4 text-right space-x-2">
+                        <button
+                          disabled={loadingAction}
+                          onClick={() => handleAction('panggil', item)}
+                          className="px-2.5 py-1 bg-emerald-800 hover:bg-emerald-900 text-white text-[10px] font-bold uppercase tracking-wider transition"
+                        >
+                          Panggil
+                        </button>
+                        <button
+                          disabled={loadingAction}
+                          onClick={() => handleAction('selesai', item)}
+                          className="px-2.5 py-1 bg-zinc-800 hover:bg-black text-white text-[10px] font-bold uppercase tracking-wider transition"
+                        >
+                          Selesai
+                        </button>
+                        <button
+                          onClick={() => openEditModal(item)}
+                          className="px-2.5 py-1 border border-zinc-300 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold uppercase tracking-wider transition"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          disabled={loadingAction}
+                          onClick={() => handleAction('batal', item)}
+                          className="px-2 py-1 text-red-600 hover:text-red-800 text-[10px] font-bold uppercase tracking-wider transition"
+                        >
+                          Batal
+                        </button>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </main>
 
-      <footer className="border-t border-zinc-200 py-6 text-center text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-        Manajemen Internal Puskesmas Pracimantoro 1
-      </footer>
-
-      {/* MODAL EDIT */}
+      {/* Edit Modal */}
       {editItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 p-6 backdrop-blur-sm">
-          <div className="bg-white border border-zinc-200 p-8 sm:p-10 max-w-lg w-full shadow-2xl">
-            <h3 className="text-2xl font-serif font-black text-brand-dark mb-2">Edit Data Pasien</h3>
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-6 border-b border-zinc-200 pb-4">
-              Antrean: {editItem.nomorAntrean}
-            </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-xs">
+          <div className="bg-white border border-zinc-200 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <h3 className="text-lg font-serif font-black text-brand-dark">
+              Edit Data Pasien ({editItem.kodeTiket})
+            </h3>
 
             {editError && (
-              <div className="mb-6 p-4 bg-black text-white text-xs font-bold uppercase tracking-widest text-center">
+              <div className="p-3 bg-red-800 text-white text-xs font-bold uppercase text-center">
                 {editError}
               </div>
             )}
 
-            <form onSubmit={handleEditSubmit} className="space-y-6">
+            <form onSubmit={handleEditSubmit} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
                   NIK Pasien
                 </label>
                 <input
                   type="text"
-                  value={editNik}
-                  onChange={(e) => setEditNik(e.target.value.replace(/\D/g, ''))}
                   maxLength={16}
-                  className="w-full py-2 border-b-2 border-zinc-200 text-brand-dark text-lg font-medium focus:outline-none focus:border-brand-dark transition"
+                  value={editNik}
+                  onChange={(e) => setEditNik(e.target.value)}
+                  className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
-                  Nama Lengkap
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                  Nama Pasien
                 </label>
                 <input
                   type="text"
                   value={editNama}
                   onChange={(e) => setEditNama(e.target.value)}
-                  className="w-full py-2 border-b-2 border-zinc-200 text-brand-dark text-lg font-medium focus:outline-none focus:border-brand-dark transition"
+                  className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
                   Nomor WhatsApp
                 </label>
                 <input
                   type="text"
                   value={editWa}
                   onChange={(e) => setEditWa(e.target.value)}
-                  className="w-full py-2 border-b-2 border-zinc-200 text-brand-dark text-lg font-medium focus:outline-none focus:border-brand-dark transition"
+                  className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
                   required
                 />
               </div>
-              
-              <div className="pt-4 flex flex-col gap-3">
+
+              <div className="pt-2 flex gap-3">
                 <button
                   type="submit"
                   disabled={loadingAction}
-                  className="w-full py-4 bg-brand-dark text-white text-xs font-bold uppercase tracking-widest hover:bg-black transition"
+                  className="flex-1 py-3 bg-brand-dark text-white text-xs font-bold uppercase tracking-wider hover:bg-black transition"
                 >
-                  {loadingAction ? 'MENYIMPAN...' : 'SIMPAN PERUBAHAN'}
+                  {loadingAction ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
                 <button
                   type="button"
-                  disabled={loadingAction}
                   onClick={() => setEditItem(null)}
-                  className="w-full py-4 text-zinc-500 text-xs font-bold uppercase tracking-widest hover:text-black transition"
+                  className="px-4 py-3 border border-zinc-300 text-zinc-500 text-xs font-bold uppercase tracking-wider hover:bg-zinc-100 transition"
                 >
-                  BATAL
+                  Batal
                 </button>
               </div>
             </form>

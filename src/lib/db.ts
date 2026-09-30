@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { put, get } from '@vercel/blob';
 import { Antrean, KuotaHari, StatusPoli } from './types';
 import {
   formatQueueNumber,
@@ -7,43 +8,29 @@ import {
   formatTanggalIndo,
   isOperationalDay,
   parseSequence,
-  getNextSequence,
   MAX_KUOTA_HARIAN
 } from './queue-rules';
 
+const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
 const isVercel = process.env.VERCEL === '1';
 const DATA_DIR = isVercel ? '/tmp' : path.join(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'antrean.json');
 const POLI_STATE_FILE = path.join(DATA_DIR, 'poli_state.json');
 
-// Helper untuk selalu mendapatkan waktu WIB (meskipun di server Vercel UTC)
+// Memory cache untuk mempercepat request beruntun dalam 1 lambda lifecycle
+let memoryAntrean: Antrean[] | null = null;
+let memoryAntreanTime = 0;
+let memoryPoliState: any = null;
+let memoryPoliTime = 0;
+const CACHE_TTL_MS = 1500; // 1.5 detik TTL untuk read cache
+
+/**
+ * Helper untuk mendapatkan waktu WIB (UTC+7)
+ */
 export function getWIBDate(): Date {
   const now = new Date();
   const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (3600000 * 7));
-}
-
-function normalizeNomor(nomor: string): string {
-  const digits = (nomor || '').replace(/\D/g, '').slice(-2);
-  const n = parseInt(digits, 10);
-  return isNaN(n) ? nomor : n.toString().padStart(2, '0');
-}
-
-function ensureDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
-  }
-  if (!fs.existsSync(POLI_STATE_FILE)) {
-    const initialState = {
-      antreanSekarang: null as string | null,
-      ruangan: 'Ruang 103 (Lantai 1)',
-      jamLayanan: '08.00 - 12.00 WIB'
-    };
-    fs.writeFileSync(POLI_STATE_FILE, JSON.stringify(initialState, null, 2), 'utf-8');
-  }
 }
 
 function getFormattedDate(d: Date): string {
@@ -53,82 +40,189 @@ function getFormattedDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function readAllAntrean(): Antrean[] {
-  ensureDataFiles();
+function ensureLocalDir() {
+  if (!fs.existsSync(DATA_DIR)) {
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch {}
+  }
+}
+
+/**
+ * Membaca seluruh data antrean.
+ * Prioritas: Vercel Blob Storage jika token tersedia, fallback ke local file.
+ */
+export async function readAllAntrean(): Promise<Antrean[]> {
+  const now = Date.now();
+  if (memoryAntrean && (now - memoryAntreanTime < CACHE_TTL_MS)) {
+    return memoryAntrean;
+  }
+
+  // 1. Coba baca dari Vercel Blob jika token tersedia
+  if (BLOB_TOKEN) {
+    try {
+      // Ambil blob dari URL tetap antrean.json di private store
+      const blobRes = await get('antrean.json', {
+        access: 'private',
+        token: BLOB_TOKEN
+      });
+
+      if (blobRes && blobRes.stream) {
+        const text = await new Response(blobRes.stream).text();
+        const parsed = JSON.parse(text) as Antrean[];
+        memoryAntrean = parsed;
+        memoryAntreanTime = now;
+        return parsed;
+      }
+    } catch (blobErr: any) {
+      // Jika blob belum ada (404), lanjutkan fallback ke local / initial
+      if (blobErr?.status !== 404 && blobErr?.message?.indexOf('404') === -1) {
+        console.warn('Vercel Blob read warning:', blobErr?.message || blobErr);
+      }
+    }
+  }
+
+  // 2. Fallback ke disk lokal
+  ensureLocalDir();
   try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    const parsed = JSON.parse(raw) as Antrean[];
-    // Migrasi sekali jalan: format lama "FISIO-01" -> "01", kode tiket diselaraskan.
-    let migrated = false;
-    for (const a of parsed) {
-      const fixed = normalizeNomor(a.nomorAntrean);
-      if (fixed !== a.nomorAntrean) { a.nomorAntrean = fixed; migrated = true; }
-      const expectedKode = generateKodeTiket(a.tanggalKunjungan, a.nomorAntrean);
-      if (a.kodeTiket !== expectedKode && a.kodeTiket.startsWith('PKM-FISIO-')) { a.kodeTiket = expectedKode; migrated = true; }
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+      const parsed = JSON.parse(raw) as Antrean[];
+      memoryAntrean = parsed;
+      memoryAntreanTime = now;
+      return parsed;
     }
-    if (migrated) {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
-    }
-    return parsed;
   } catch (err) {
-    return [];
+    console.error('Local file read error:', err);
   }
+
+  memoryAntrean = [];
+  memoryAntreanTime = now;
+  return [];
 }
 
-export function saveAllAntrean(data: Antrean[]) {
-  ensureDataFiles();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
-}
+/**
+ * Menyimpan seluruh data antrean.
+ * Menyimpan ke Vercel Blob (persisten global) & local mirror.
+ */
+export async function saveAllAntrean(data: Antrean[]): Promise<void> {
+  memoryAntrean = data;
+  memoryAntreanTime = Date.now();
 
-export function getPoliState() {
-  ensureDataFiles();
+  // Simpan ke local disk
+  ensureLocalDir();
   try {
-    const raw = fs.readFileSync(POLI_STATE_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (typeof parsed.antreanSekarang === 'string') {
-      parsed.antreanSekarang = normalizeNomor(parsed.antreanSekarang);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch {}
+
+  // Simpan ke Vercel Blob jika token tersedia
+  if (BLOB_TOKEN) {
+    try {
+      await put('antrean.json', JSON.stringify(data), {
+        access: 'private',
+        addRandomSuffix: false,
+        token: BLOB_TOKEN
+      });
+    } catch (err) {
+      console.error('Vercel Blob save error:', err);
     }
-    return parsed;
-  } catch {
-    return {
-      antreanSekarang: null,
-      ruangan: 'Ruang 103',
-      jamLayanan: '08.00 - 12.00 WIB'
-    };
   }
 }
 
-export function setPoliState(newState: Partial<{ antreanSekarang: string | null; ruangan: string; jamLayanan: string }>) {
-  ensureDataFiles();
-  const current = getPoliState();
-  const payload = { ...newState };
-  if (typeof payload.antreanSekarang === 'string') {
-    payload.antreanSekarang = normalizeNomor(payload.antreanSekarang);
+/**
+ * Membaca state poli saat ini
+ */
+export async function getPoliState(): Promise<{ antreanSekarang: string | null; ruangan: string; jamLayanan: string }> {
+  const now = Date.now();
+  if (memoryPoliState && (now - memoryPoliTime < CACHE_TTL_MS)) {
+    return memoryPoliState;
   }
-  const updated = { ...current, ...payload };
-  fs.writeFileSync(POLI_STATE_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+
+  const defaultState = {
+    antreanSekarang: null as string | null,
+    ruangan: 'Ruang 103 (Lantai 1)',
+    jamLayanan: '08.00 - 12.00 WIB'
+  };
+
+  if (BLOB_TOKEN) {
+    try {
+      const blobRes = await get('poli_state.json', {
+        access: 'private',
+        token: BLOB_TOKEN
+      });
+      if (blobRes && blobRes.stream) {
+        const text = await new Response(blobRes.stream).text();
+        const parsed = JSON.parse(text);
+        memoryPoliState = parsed;
+        memoryPoliTime = now;
+        return parsed;
+      }
+    } catch {}
+  }
+
+  ensureLocalDir();
+  try {
+    if (fs.existsSync(POLI_STATE_FILE)) {
+      const raw = fs.readFileSync(POLI_STATE_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      memoryPoliState = parsed;
+      memoryPoliTime = now;
+      return parsed;
+    }
+  } catch {}
+
+  memoryPoliState = defaultState;
+  memoryPoliTime = now;
+  return defaultState;
+}
+
+/**
+ * Mengubah state poli
+ */
+export async function setPoliState(newState: Partial<{ antreanSekarang: string | null; ruangan: string; jamLayanan: string }>) {
+  const current = await getPoliState();
+  const updated = { ...current, ...newState };
+  memoryPoliState = updated;
+  memoryPoliTime = Date.now();
+
+  ensureLocalDir();
+  try {
+    fs.writeFileSync(POLI_STATE_FILE, JSON.stringify(updated, null, 2), 'utf-8');
+  } catch {}
+
+  if (BLOB_TOKEN) {
+    try {
+      await put('poli_state.json', JSON.stringify(updated), {
+        access: 'private',
+        addRandomSuffix: false,
+        token: BLOB_TOKEN
+      });
+    } catch (err) {
+      console.error('Vercel Blob poli state error:', err);
+    }
+  }
+
   return updated;
 }
 
 /**
- * Ambil semua antrean untuk satu tanggal, diurut numerik 01-10.
- * Termasuk yang BATAL supaya nomor tidak pernah dipakai ulang.
+ * Ambil semua antrean untuk satu tanggal, diurutkan waktu daftar
  */
-export function getAntreanByTanggal(tanggal: string): Antrean[] {
-  return readAllAntrean()
+export async function getAntreanByTanggal(tanggal: string): Promise<Antrean[]> {
+  const all = await readAllAntrean();
+  return all
     .filter(a => a.tanggalKunjungan === tanggal)
-    .sort((a, b) => parseSequence(a.nomorAntrean) - parseSequence(b.nomorAntrean));
+    .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar));
 }
 
 /**
  * Mengambil kuota hari operasional (Senin s/d Kamis) untuk pekan ini dan pekan depan.
  */
-export function getOperationalDaysQuota(): KuotaHari[] {
-  const allAntrean = readAllAntrean();
+export async function getOperationalDaysQuota(): Promise<KuotaHari[]> {
+  const allAntrean = await readAllAntrean();
   const now = getWIBDate();
   const days: KuotaHari[] = [];
 
-  // Cari 8 hari operasional ke depan (sekitar 2 minggu)
   let checkDate = new Date(now);
   checkDate.setHours(0, 0, 0, 0);
 
@@ -143,7 +237,7 @@ export function getOperationalDaysQuota(): KuotaHari[] {
       const sisaKuota = Math.max(0, MAX_KUOTA_HARIAN - kuotaTerisi);
       
       let status: KuotaHari['status'] = 'TERSEDIA';
-      let catatan = 'Peluang antrean masih sangat leluasa';
+      let catatan = `Tersedia ${sisaKuota} kuota pasien`;
       let isBisaDaftar = sisaKuota > 0;
 
       const todayStr = getFormattedDate(now);
@@ -155,10 +249,11 @@ export function getOperationalDaysQuota(): KuotaHari[] {
         isBisaDaftar = false;
       } else if (sisaKuota === 0) {
         status = 'PENUH';
-        catatan = 'Pendaftaran ditutup karena kuota maksimal 10 telah tercapai';
+        catatan = 'Pendaftaran ditutup karena kuota maksimal 10 pasien telah tercapai';
+        isBisaDaftar = false;
       } else if (sisaKuota <= 3) {
         status = 'SISA_SEDIKIT';
-        catatan = `Segera daftar, sisa ${sisaKuota} kuota lagi hari ini!`;
+        catatan = `Sisa sedikit: ${sisaKuota} kuota lagi hari ini!`;
       }
 
       const hariNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -175,7 +270,6 @@ export function getOperationalDaysQuota(): KuotaHari[] {
         isBisaDaftar
       });
     }
-    // Naikkan 1 hari
     checkDate.setDate(checkDate.getDate() + 1);
   }
 
@@ -183,21 +277,23 @@ export function getOperationalDaysQuota(): KuotaHari[] {
 }
 
 /**
- * Reservasi antrean baru dengan garansi atomik kuota maksimal 10.
+ * Reservasi antrean baru dengan garansi kuota maksimal 10 pasien.
+ * Menghilangkan bug off-by-one dan memastikan pasien ke-9 & ke-10 bisa daftar.
  */
-export function bookAntrean(params: {
+export async function bookAntrean(params: {
   tanggalKunjungan: string;
   nik: string;
   namaPasien: string;
   noWa: string;
   tipePendaftar: Antrean['tipePendaftar'];
-}): { success: boolean; antrean?: Antrean; message?: string } {
-  const allAntrean = readAllAntrean();
+}): Promise<{ success: boolean; antrean?: Antrean; message?: string }> {
+  const allAntrean = await readAllAntrean();
+  const cleanNik = params.nik.replace(/\D/g, '');
 
   // 0. Idempotensi double-submit: NIK yang sudah punya tiket AKTIF di tanggal
   // yang sama langsung dikembalikan (bukan error, bukan tiket ganda).
   const existingSameDay = allAntrean.find(
-    a => a.tanggalKunjungan === params.tanggalKunjungan && a.nik === params.nik && a.status !== 'BATAL'
+    a => a.tanggalKunjungan === params.tanggalKunjungan && a.nik === cleanNik && a.status !== 'BATAL'
   );
   if (existingSameDay) {
     return { success: true, antrean: existingSameDay };
@@ -206,7 +302,7 @@ export function bookAntrean(params: {
   // 1. Cek batas 1x per minggu (Senin - Minggu)
   const [y, m, d] = params.tanggalKunjungan.split('-').map(Number);
   const targetDate = new Date(y, m - 1, d);
-  const day = targetDate.getDay(); // 0 = Minggu, 1 = Senin, dst.
+  const day = targetDate.getDay();
   const diffToMonday = day === 0 ? -6 : 1 - day;
   
   const monday = new Date(targetDate);
@@ -218,7 +314,7 @@ export function bookAntrean(params: {
   sunday.setHours(23, 59, 59, 999);
 
   const existingThisWeek = allAntrean.find(a => {
-    if (a.nik !== params.nik || a.status === 'BATAL') return false;
+    if (a.nik !== cleanNik || a.status === 'BATAL') return false;
     const [ay, am, ad] = a.tanggalKunjungan.split('-').map(Number);
     const aDate = new Date(ay, am - 1, ad);
     return aDate >= monday && aDate <= sunday;
@@ -227,11 +323,11 @@ export function bookAntrean(params: {
   if (existingThisWeek) {
     return {
       success: false,
-      message: `Mohon maaf, NIK ${params.nik} sudah terdaftar untuk sesi Fisioterapi minggu ini pada tanggal ${formatTanggalIndo(existingThisWeek.tanggalKunjungan)}. Sesuai aturan, 1 Pasien hanya bisa mendaftar 1 kali dalam sepekan (Senin-Minggu).`
+      message: `Mohon maaf, NIK ${cleanNik} sudah terdaftar untuk sesi Fisioterapi pekan ini pada tanggal ${formatTanggalIndo(existingThisWeek.tanggalKunjungan)}. Sesuai aturan, 1 Pasien hanya bisa mendaftar 1 kali dalam sepekan (Senin-Minggu).`
     };
   }
 
-  // 2. Hitung kuota yang sudah terisi di tanggal tersebut (BATAL tidak dihitung)
+  // 2. Hitung kuota aktif pada hari tersebut (status BATAL tidak dihitung)
   const dayList = allAntrean.filter(
     a => a.tanggalKunjungan === params.tanggalKunjungan
   );
@@ -244,33 +340,25 @@ export function bookAntrean(params: {
     };
   }
 
-  // 3. Nomor selalu naik monotonik: max semua nomor yang pernah diterbitkan + 1.
-  // Slot yang dibatalkan hangus (tidak dipakai ulang) sehingga tidak ada nomor kembar.
-  const nextSequence = getNextSequence(dayList.map(a => parseSequence(a.nomorAntrean)));
-  if (nextSequence > MAX_KUOTA_HARIAN) {
-    return {
-      success: false,
-      message: `Mohon maaf, nomor antrean untuk ${formatTanggalIndo(params.tanggalKunjungan)} sudah habis (maksimal 10 nomor per hari).`
-    };
-  }
-  const nomorAntrean = formatQueueNumber(nextSequence);
-  const kodeTiket = generateKodeTiket(params.tanggalKunjungan, nomorAntrean);
+  // 3. Alokasi slot: slot nomor urut 01-10 berdasarkan kuota terisi aktif + 1
+  const slotNumber = formatQueueNumber(activeCount + 1);
+  const kodeTiket = generateKodeTiket(params.tanggalKunjungan, slotNumber);
 
   const newAntrean: Antrean = {
     id: `antrean-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    nomorAntrean,
+    nomorAntrean: slotNumber,
     kodeTiket,
     tanggalKunjungan: params.tanggalKunjungan,
-    nik: params.nik,
-    namaPasien: params.namaPasien,
-    noWa: params.noWa,
+    nik: cleanNik,
+    namaPasien: params.namaPasien.trim(),
+    noWa: params.noWa.trim(),
     tipePendaftar: params.tipePendaftar,
     status: 'MENUNGGU',
     waktuDaftar: getWIBDate().toISOString()
   };
 
   allAntrean.push(newAntrean);
-  saveAllAntrean(allAntrean);
+  await saveAllAntrean(allAntrean);
 
   return {
     success: true,
@@ -279,13 +367,13 @@ export function bookAntrean(params: {
 }
 
 /**
- * Pembatalan antrean mandiri oleh pasien (kuota aktif berkurang 1,
- * tetapi nomor yang dibatalkan hangus dan tidak diterbitkan ulang).
+ * Pembatalan antrean mandiri oleh pasien
  */
-export function cancelAntrean(idOrKodeTiket: string): { success: boolean; message: string } {
-  const allAntrean = readAllAntrean();
+export async function cancelAntrean(idOrKodeTiket: string): Promise<{ success: boolean; message: string; antrean?: Antrean }> {
+  const allAntrean = await readAllAntrean();
+  const clean = idOrKodeTiket.trim();
   const index = allAntrean.findIndex(
-    a => a.id === idOrKodeTiket || a.kodeTiket === idOrKodeTiket
+    a => a.id === clean || a.kodeTiket.toUpperCase() === clean.toUpperCase()
   );
 
   if (index === -1) {
@@ -293,53 +381,56 @@ export function cancelAntrean(idOrKodeTiket: string): { success: boolean; messag
   }
 
   if (allAntrean[index].status === 'BATAL') {
-    return { success: false, message: 'Tiket antrean ini sudah pernah dibatalkan.' };
+    return { success: false, message: 'Tiket antrean ini sudah pernah dibatalkan sebelumnya.', antrean: allAntrean[index] };
   }
 
   allAntrean[index].status = 'BATAL';
-  saveAllAntrean(allAntrean);
+  allAntrean[index].waktuBatal = getWIBDate().toISOString();
+  await saveAllAntrean(allAntrean);
 
   return {
     success: true,
-    message: `Antrean ${allAntrean[index].nomorAntrean} berhasil dibatalkan. Kuota telah dikembalikan untuk pasien lain.`
+    message: `Antrean dengan Kode Tiket ${allAntrean[index].kodeTiket} berhasil dibatalkan. Kuota telah dikembalikan untuk pasien lain.`,
+    antrean: allAntrean[index]
   };
 }
 
 /**
  * Cari antrean berdasarkan ID, Kode Tiket, atau NIK.
- * Sengaja TIDAK mencari by nomor antrean (01-10 berulang tiap hari,
- * rawan kena tiket orang lain) dan TIDAK by nomor WA (bukan identitas unik).
- * Untuk NIK yang punya banyak tiket, kembalikan yang terbaru dan belum BATAL.
  */
-export function findAntrean(query: string): Antrean | null {
+export async function findAntrean(query: string): Promise<Antrean | null> {
   const clean = query.trim();
   if (!clean) return null;
-  const allAntrean = readAllAntrean();
+  const allAntrean = await readAllAntrean();
 
+  // 1. Cari by ID atau Kode Tiket (case-insensitive)
   const byIdOrKode = allAntrean.find(
-    a => a.id === clean || a.kodeTiket === clean
+    a => a.id === clean || a.kodeTiket.toUpperCase() === clean.toUpperCase()
   );
   if (byIdOrKode) return byIdOrKode;
 
-  // Nomor WA bukan kunci pencarian yang valid (bisa berubah / dipakai bersama).
+  // 2. Cari by NIK (16 digit angka)
   const digitsOnly = clean.replace(/\D/g, '');
-  if (/^(08|628)\d{8,12}$/.test(clean.replace(/[\s-+]/g, ''))) {
-    return null;
+  if (digitsOnly.length >= 10) {
+    const byNik = allAntrean
+      .filter(a => a.nik === digitsOnly || a.nik === clean)
+      .sort((a, b) => b.waktuDaftar.localeCompare(a.waktuDaftar));
+
+    if (byNik.length > 0) {
+      // Prioritaskan tiket yang aktif (belum batal)
+      return byNik.find(a => a.status !== 'BATAL') || byNik[0];
+    }
   }
 
-  const byNik = allAntrean
-    .filter(a => a.nik === clean || a.nik === digitsOnly)
-    .sort((a, b) => b.waktuDaftar.localeCompare(a.waktuDaftar));
-  if (!byNik.length) return null;
-  return byNik.find(a => a.status !== 'BATAL') || byNik[0];
+  return null;
 }
 
 /**
- * Urutan antrean pasien pada tanggal kunjungannya (1-based),
- * dihitung dari posisi waktuDaftar di antara tiket aktif hari itu.
+ * Menghitung urutan pendaftaran aktif pada hari kunjungan
  */
-export function getQueuePosition(antrean: Antrean): number {
-  const dayActive = readAllAntrean()
+export async function getQueuePosition(antrean: Antrean): Promise<number> {
+  const allAntrean = await readAllAntrean();
+  const dayActive = allAntrean
     .filter(a => a.tanggalKunjungan === antrean.tanggalKunjungan && a.status !== 'BATAL')
     .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar));
   const idx = dayActive.findIndex(a => a.id === antrean.id);
@@ -347,12 +438,12 @@ export function getQueuePosition(antrean: Antrean): number {
 }
 
 /**
- * Status antrean poli hari ini untuk live monitor & TV.
+ * Status antrean poli hari ini
  */
-export function getStatusPoliHariIni(): StatusPoli {
+export async function getStatusPoliHariIni(): Promise<StatusPoli> {
   const todayStr = getFormattedDate(getWIBDate());
-  const allAntrean = readAllAntrean();
-  const poliState = getPoliState();
+  const allAntrean = await readAllAntrean();
+  const poliState = await getPoliState();
 
   const todayAntrean = allAntrean.filter(
     a => a.tanggalKunjungan === todayStr && a.status !== 'BATAL'

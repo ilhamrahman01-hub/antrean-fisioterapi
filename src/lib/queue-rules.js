@@ -21,33 +21,34 @@ export function getNextSequence(issued) {
 }
 
 export function validateNIK(nik) {
-  const clean = nik.replace(/\s+/g, '');
+  const clean = (nik || '').replace(/\s+/g, '');
   if (!clean) {
-    return { valid: false, message: 'NIK wajib diisi' };
+    return { valid: false, message: 'NIK wajib diisi.' };
   }
   if (!/^\d{16}$/.test(clean)) {
-    return { valid: false, message: 'NIK harus terdiri dari 16 digit angka' };
+    return { valid: false, message: 'NIK harus terdiri dari 16 digit angka.' };
   }
   return { valid: true };
 }
 
 export function validateWhatsApp(noWa) {
-  const clean = noWa.replace(/[\s-+]/g, '');
+  const clean = (noWa || '').replace(/[\s-+]/g, '');
   if (!clean) {
-    return { valid: false, message: 'Nomor WhatsApp wajib diisi' };
+    return { valid: false, message: 'Nomor WhatsApp wajib diisi.' };
   }
   if (!/^(08|628)\d{8,12}$/.test(clean)) {
-    return { valid: false, message: 'Format nomor WhatsApp tidak valid (contoh: 081234567890)' };
+    return { valid: false, message: 'Format nomor WhatsApp tidak valid (contoh: 081234567890).' };
   }
   return { valid: true };
 }
 
 export function maskNIK(nik) {
-  if (nik.length !== 16) return nik;
+  if (!nik || nik.length !== 16) return nik || '';
   return `${nik.slice(0, 6)}******${nik.slice(12)}`;
 }
 
 export function formatTanggalIndo(dateStr) {
+  if (!dateStr || !dateStr.includes('-')) return dateStr;
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   
@@ -61,7 +62,7 @@ export function formatTanggalIndo(dateStr) {
 }
 
 export function generateKodeTiket(tanggal, nomorAntrean) {
-  const cleanDate = tanggal.replace(/-/g, '');
+  const cleanDate = (tanggal || '').replace(/-/g, '');
   const seq = parseSequence(nomorAntrean).toString().padStart(2, '0');
   return `PKM-FISIO-${cleanDate}-${seq}`;
 }

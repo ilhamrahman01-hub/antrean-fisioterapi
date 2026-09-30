@@ -4,8 +4,8 @@ export type StatusAntrean = 'MENUNGGU' | 'DIPANGGIL' | 'SELESAI' | 'BATAL' | 'TI
 
 export interface Antrean {
   id: string;
-  nomorAntrean: string; // e.g. "01"
-  kodeTiket: string;    // e.g. "PKM-FISIO-20260917-06"
+  nomorAntrean: string; // e.g. "01" (penanda slot internal)
+  kodeTiket: string;    // e.g. "PKM-FISIO-20261001-01"
   tanggalKunjungan: string; // "YYYY-MM-DD"
   nik: string;          // 16 digits
   namaPasien: string;
@@ -15,6 +15,7 @@ export interface Antrean {
   waktuDaftar: string;  // ISO string
   waktuDipanggil?: string;
   waktuSelesai?: string;
+  waktuBatal?: string;
 }
 
 export interface KuotaHari {
@@ -32,7 +33,7 @@ export interface KuotaHari {
 export interface StatusPoli {
   poliName: string;
   ruangan: string;
-  antreanSekarang: string | null; // e.g. "04"
+  antreanSekarang: string | null;
   totalHariIni: number;
   sisaMenunggu: number;
   jamLayanan: string;

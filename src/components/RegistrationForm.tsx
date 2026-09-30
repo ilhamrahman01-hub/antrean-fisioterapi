@@ -11,7 +11,7 @@ interface Props {
   onSelectDate: (tanggal: string) => void;
 }
 
-export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate }: Props) {
+export default function RegistrationForm({ kuotaList, selectedDate }: Props) {
   const router = useRouter();
 
   const [nik, setNik] = useState('');
@@ -21,19 +21,25 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
   const [errorMessage, setErrorMessage] = useState('');
 
   const selectedDayInfo = kuotaList.find((k) => k.tanggal === selectedDate);
+  const isFull = selectedDayInfo?.status === 'PENUH';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage('');
 
     if (!selectedDate) {
-      setErrorMessage('Harap pilih jadwal kedatangan pada langkah sebelumnya.');
+      setErrorMessage('Harap pilih tanggal kedatangan terlebih dahulu.');
+      return;
+    }
+
+    if (isFull) {
+      setErrorMessage('Kuota pada tanggal yang dipilih telah penuh. Silakan pilih hari lain.');
       return;
     }
 
     const nikValidation = validateNIK(nik);
     if (!nikValidation.valid) {
-      setErrorMessage(nikValidation.message || 'NIK tidak valid');
+      setErrorMessage(nikValidation.message || 'NIK tidak valid (wajib 16 digit angka).');
       return;
     }
 
@@ -44,7 +50,7 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
 
     const waValidation = validateWhatsApp(noWa);
     if (!waValidation.valid) {
-      setErrorMessage(waValidation.message || 'Nomor WhatsApp tidak valid');
+      setErrorMessage(waValidation.message || 'Nomor WhatsApp tidak valid.');
       return;
     }
 
@@ -68,7 +74,7 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
 
       const data = await res.json().catch(() => null);
       if (!data) {
-        setErrorMessage('Respon server tidak terbaca. Cek karcis Anda di halaman "Cek Tiket" sebelum mendaftar ulang agar tidak double.');
+        setErrorMessage('Respon server tidak terbaca. Silakan cek karcis Anda di menu "Cek Tiket" sebelum mendaftar ulang.');
         setLoading(false);
         return;
       }
@@ -88,8 +94,8 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
     } catch (err: any) {
       setErrorMessage(
         err?.name === 'AbortError'
-          ? 'Permintaan timeout. Jangan daftar ulang dulu — cek karcis Anda di halaman "Cek Tiket" memakai NIK.'
-          : 'Koneksi bermasalah. Jika sudah menekan tombol sekali, cek "Cek Tiket" dulu sebelum mencoba lagi agar tidak double.'
+          ? 'Permintaan timeout. Jangan daftar ulang dulu — cek karcis Anda di menu "Cek Tiket" menggunakan NIK.'
+          : 'Koneksi bermasalah. Silakan periksa koneksi internet Anda atau cek menu "Cek Tiket".'
       );
       setLoading(false);
     }
@@ -98,7 +104,7 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
   return (
     <div className="w-full">
       {errorMessage && (
-        <div className="mb-8 p-4 bg-black text-white text-sm font-bold uppercase tracking-widest text-center">
+        <div className="mb-6 p-4 bg-zinc-900 text-white text-xs font-bold uppercase tracking-wider text-center leading-relaxed">
           {errorMessage}
         </div>
       )}
@@ -114,7 +120,7 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
             maxLength={16}
             value={nik}
             onChange={(e) => setNik(e.target.value.replace(/\D/g, ''))}
-            placeholder="16 Digit NIK KTP..."
+            placeholder="16 Digit NIK KTP Pasien..."
             className="w-full py-2 bg-transparent border-b-2 border-zinc-200 text-brand-dark text-lg font-medium focus:outline-none focus:border-brand-dark transition placeholder-zinc-300"
             required
           />
@@ -132,7 +138,7 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
             type="text"
             value={namaPasien}
             onChange={(e) => setNamaPasien(e.target.value)}
-            placeholder="Ketik nama lengkap..."
+            placeholder="Ketik nama lengkap pasien..."
             className="w-full py-2 bg-transparent border-b-2 border-zinc-200 text-brand-dark text-lg font-medium focus:outline-none focus:border-brand-dark transition placeholder-zinc-300"
             required
           />
@@ -147,24 +153,27 @@ export default function RegistrationForm({ kuotaList, selectedDate, onSelectDate
             type="tel"
             value={noWa}
             onChange={(e) => setNoWa(e.target.value)}
-            placeholder="08xxxxxxxxxx"
+            placeholder="Contoh: 081234567890"
             className="w-full py-2 bg-transparent border-b-2 border-zinc-200 text-brand-dark text-lg font-medium focus:outline-none focus:border-brand-dark transition placeholder-zinc-300"
             required
           />
+          <p className="text-[10px] text-zinc-400 font-medium mt-1">
+            Karcis digital dan kode tiket resmi dapat dikirimkan langsung ke nomor WhatsApp ini.
+          </p>
         </div>
 
         {/* Submit Button */}
         <div className="pt-4">
            <button
              type="submit"
-             disabled={loading || !selectedDate || (selectedDayInfo?.status === 'PENUH')}
+             disabled={loading || !selectedDate || isFull}
              className={`w-full py-4 font-bold text-xs uppercase tracking-widest transition shadow-sm ${
-               loading || !selectedDate || (selectedDayInfo?.status === 'PENUH')
+               loading || !selectedDate || isFull
                  ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                  : 'bg-brand-dark text-white hover:bg-black active:scale-[0.99]'
              }`}
            >
-             {loading ? 'MEMPROSES...' : 'AMBIL ANTREAN SEKARANG'}
+             {loading ? 'MEMPROSES RESERVASI...' : isFull ? 'KUOTA HARI INI PENUH' : 'RESERVASI KUOTA SEKARANG'}
            </button>
         </div>
       </form>

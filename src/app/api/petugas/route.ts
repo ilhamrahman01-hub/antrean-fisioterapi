@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readAllAntrean, saveAllAntrean, getPoliState, setPoliState, getWIBDate, getAntreanByTanggal } from '@/lib/db';
-import { parseSequence } from '@/lib/queue-rules';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
+};
 
 const PETUGAS_PIN = process.env.PETUGAS_PIN || 'praci123';
 
@@ -12,96 +16,127 @@ export async function GET(req: NextRequest) {
   const tanggal = searchParams.get('tanggal');
 
   if (pin !== PETUGAS_PIN) {
-    return NextResponse.json({ success: false, message: 'PIN Petugas tidak valid' }, { status: 401 });
+    return NextResponse.json(
+      { success: false, message: 'Akses ditolak: PIN Petugas tidak valid.' },
+      { status: 401, headers: noCacheHeaders }
+    );
   }
 
   const todayStr = getWIBDate().toISOString().split('T')[0];
   const targetDate = tanggal || todayStr;
 
-  const targetList = getAntreanByTanggal(targetDate).filter(a => a.status !== 'BATAL');
-  const state = getPoliState();
+  const targetList = (await getAntreanByTanggal(targetDate)).filter(a => a.status !== 'BATAL');
+  const state = await getPoliState();
 
-  return NextResponse.json({
-    success: true,
-    data: {
-      antreanList: targetList,
-      poliState: state
-    }
-  });
+  return NextResponse.json(
+    {
+      success: true,
+      data: {
+        antreanList: targetList,
+        poliState: state
+      }
+    },
+    { headers: noCacheHeaders }
+  );
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { pin, action, nomorAntrean } = body;
+    const { pin, action, antreanId, kodeTiket } = body;
 
     if (pin !== PETUGAS_PIN) {
-      return NextResponse.json({ success: false, message: 'PIN Petugas tidak valid' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, message: 'Akses ditolak: PIN Petugas tidak valid.' },
+        { status: 401, headers: noCacheHeaders }
+      );
     }
 
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const wib = new Date(utc + (3600000 * 7));
+    const wib = getWIBDate();
     const todayStr = wib.toISOString().split('T')[0];
+    const all = await readAllAntrean();
 
-    const normNomor = (n: string) => {
-      const d = (n || '').replace(/\D/g, '').slice(-2);
-      const v = parseInt(d, 10);
-      return isNaN(v) ? n : v.toString().padStart(2, '0');
+    const findTarget = () => {
+      if (antreanId) return all.find(a => a.id === antreanId);
+      if (kodeTiket) return all.find(a => a.kodeTiket.toUpperCase() === kodeTiket.toUpperCase());
+      return undefined;
     };
 
-    const all = readAllAntrean();
-    const matchDay = (a: (typeof all)[number], nomor: string) =>
-      a.tanggalKunjungan === todayStr && normNomor(a.nomorAntrean) === normNomor(nomor);
-
     if (action === 'panggil') {
-      // Panggil nomor spesifik (dinormalisasi agar format lama/baru cocok)
-      const nomor = normNomor(nomorAntrean);
-      setPoliState({ antreanSekarang: nomor });
-      const target = all.find(a => matchDay(a, nomor) && a.status !== 'BATAL');
-      if (target) {
-        target.status = 'DIPANGGIL';
-        target.waktuDipanggil = wib.toISOString();
-        saveAllAntrean(all);
+      const target = findTarget();
+      if (!target) {
+        return NextResponse.json({ success: false, message: 'Antrean tidak ditemukan' }, { status: 404, headers: noCacheHeaders });
       }
-      return NextResponse.json({ success: true, message: `Memanggil ${nomor}` });
+
+      await setPoliState({ antreanSekarang: target.nomorAntrean });
+      target.status = 'DIPANGGIL';
+      target.waktuDipanggil = wib.toISOString();
+      await saveAllAntrean(all);
+
+      return NextResponse.json(
+        { success: true, message: `Memanggil pasien ${target.namaPasien} (${target.kodeTiket})` },
+        { headers: noCacheHeaders }
+      );
     }
 
     if (action === 'panggil_berikutnya') {
-      // Cari pasien berikutnya yang berstatus 'MENUNGGU', urut numerik (01 < 02 < ... < 10)
       const nextWaiting = all
         .filter(a => a.tanggalKunjungan === todayStr && a.status === 'MENUNGGU')
-        .sort((a, b) => parseSequence(a.nomorAntrean) - parseSequence(b.nomorAntrean))[0];
+        .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar))[0];
 
       if (!nextWaiting) {
-        return NextResponse.json({ success: false, message: 'Tidak ada lagi antrean yang menunggu hari ini.' });
+        return NextResponse.json(
+          { success: false, message: 'Tidak ada lagi antrean pasien yang menunggu hari ini.' },
+          { headers: noCacheHeaders }
+        );
       }
 
-      setPoliState({ antreanSekarang: nextWaiting.nomorAntrean });
+      await setPoliState({ antreanSekarang: nextWaiting.nomorAntrean });
       nextWaiting.status = 'DIPANGGIL';
       nextWaiting.waktuDipanggil = wib.toISOString();
-      saveAllAntrean(all);
+      await saveAllAntrean(all);
 
-      return NextResponse.json({
-        success: true,
-        message: `Memanggil ${nextWaiting.nomorAntrean} (${nextWaiting.namaPasien})`,
-        data: nextWaiting
-      });
+      return NextResponse.json(
+        {
+          success: true,
+          message: `Memanggil ${nextWaiting.namaPasien} (${nextWaiting.kodeTiket})`,
+          data: nextWaiting
+        },
+        { headers: noCacheHeaders }
+      );
     }
 
     if (action === 'selesai') {
-      const nomor = normNomor(nomorAntrean);
-      const target = all.find(a => matchDay(a, nomor) && a.status !== 'BATAL');
+      const target = findTarget();
       if (target) {
         target.status = 'SELESAI';
         target.waktuSelesai = wib.toISOString();
-        saveAllAntrean(all);
+        await saveAllAntrean(all);
       }
-      return NextResponse.json({ success: true, message: `Antrean ${nomor} ditandai selesai` });
+      return NextResponse.json(
+        { success: true, message: 'Antrean pasien berhasil ditandai selesai.' },
+        { headers: noCacheHeaders }
+      );
     }
 
-    return NextResponse.json({ success: false, message: 'Aksi tidak dikenali' }, { status: 400 });
+    if (action === 'batal') {
+      const target = findTarget();
+      if (target) {
+        target.status = 'BATAL';
+        target.waktuBatal = wib.toISOString();
+        await saveAllAntrean(all);
+      }
+      return NextResponse.json(
+        { success: true, message: 'Antrean berhasil dibatalkan oleh petugas.' },
+        { headers: noCacheHeaders }
+      );
+    }
+
+    return NextResponse.json({ success: false, message: 'Aksi petugas tidak dikenali.' }, { status: 400, headers: noCacheHeaders });
   } catch (error) {
-    return NextResponse.json({ success: false, message: 'Gagal memproses aksi petugas' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: 'Gagal memproses aksi petugas.' },
+      { status: 500, headers: noCacheHeaders }
+    );
   }
 }

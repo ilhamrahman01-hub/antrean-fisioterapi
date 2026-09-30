@@ -10,7 +10,7 @@ export function isOperationalDay(date: Date): boolean {
 }
 
 /**
- * Format urutan antrean menjadi angka saja 01 s/d 10.
+ * Format urutan antrean menjadi angka 01 s/d 10.
  */
 export function formatQueueNumber(sequence: number): string {
   return sequence.toString().padStart(2, '0');
@@ -18,7 +18,7 @@ export function formatQueueNumber(sequence: number): string {
 
 /**
  * Ambil urutan numerik dari nomor antrean.
- * Menerima format baru ("01") maupun lama ("FISIO-01") untuk migrasi.
+ * Menerima format baru ("01") maupun lama ("FISIO-01") untuk kompatibilitas.
  */
 export function parseSequence(nomorAntrean: string): number {
   const digits = (nomorAntrean || '').replace(/\D/g, '').slice(-2);
@@ -27,8 +27,7 @@ export function parseSequence(nomorAntrean: string): number {
 }
 
 /**
- * Nomor berikutnya selalu monotonik naik: max(nomor yang pernah diterbitkan) + 1.
- * Slot yang dibatalkan hangus dan tidak dipakai ulang (anti nomor kembar).
+ * Nomor slot berikutnya (1..10).
  */
 export function getNextSequence(issued: number[]): number {
   const max = issued.length ? Math.max(...issued) : 0;
@@ -39,12 +38,12 @@ export function getNextSequence(issued: number[]): number {
  * Validasi NIK Indonesia (harus 16 digit angka).
  */
 export function validateNIK(nik: string): { valid: boolean; message?: string } {
-  const clean = nik.replace(/\s+/g, '');
+  const clean = (nik || '').replace(/\s+/g, '');
   if (!clean) {
-    return { valid: false, message: 'NIK wajib diisi' };
+    return { valid: false, message: 'NIK wajib diisi.' };
   }
   if (!/^\d{16}$/.test(clean)) {
-    return { valid: false, message: 'NIK harus terdiri dari 16 digit angka' };
+    return { valid: false, message: 'NIK harus terdiri dari 16 digit angka.' };
   }
   return { valid: true };
 }
@@ -53,12 +52,12 @@ export function validateNIK(nik: string): { valid: boolean; message?: string } {
  * Validasi Nomor WhatsApp Indonesia (harus diawali 08 atau 628, panjang 10-15 digit).
  */
 export function validateWhatsApp(noWa: string): { valid: boolean; message?: string } {
-  const clean = noWa.replace(/[\s-+]/g, '');
+  const clean = (noWa || '').replace(/[\s-+]/g, '');
   if (!clean) {
-    return { valid: false, message: 'Nomor WhatsApp wajib diisi' };
+    return { valid: false, message: 'Nomor WhatsApp wajib diisi.' };
   }
   if (!/^(08|628)\d{8,12}$/.test(clean)) {
-    return { valid: false, message: 'Format nomor WhatsApp tidak valid (contoh: 081234567890)' };
+    return { valid: false, message: 'Format nomor WhatsApp tidak valid (contoh: 081234567890).' };
   }
   return { valid: true };
 }
@@ -67,14 +66,15 @@ export function validateWhatsApp(noWa: string): { valid: boolean; message?: stri
  * Samarkan NIK untuk privasi publik: 331201******0001
  */
 export function maskNIK(nik: string): string {
-  if (nik.length !== 16) return nik;
+  if (!nik || nik.length !== 16) return nik || '';
   return `${nik.slice(0, 6)}******${nik.slice(12)}`;
 }
 
 /**
- * Format string tanggal YYYY-MM-DD ke Bahasa Indonesia (contoh: Rabu, 6 Nov 2024).
+ * Format string tanggal YYYY-MM-DD ke Bahasa Indonesia (contoh: Rabu, 6 November 2024).
  */
 export function formatTanggalIndo(dateStr: string): string {
+  if (!dateStr || !dateStr.includes('-')) return dateStr;
   const [year, month, day] = dateStr.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   
@@ -89,11 +89,9 @@ export function formatTanggalIndo(dateStr: string): string {
 
 /**
  * Generate Kode Tiket Unik: PKM-FISIO-YYYYMMDD-XX
- * Dibuat unik per tanggal+nomor; bila nomor dipakai ulang antar-hari,
- * tanggal membuat kodenya tetap unik. Id tiket (UUID) tetap kunci utama.
  */
 export function generateKodeTiket(tanggal: string, nomorAntrean: string): string {
-  const cleanDate = tanggal.replace(/-/g, '');
+  const cleanDate = (tanggal || '').replace(/-/g, '');
   const seq = parseSequence(nomorAntrean).toString().padStart(2, '0');
   return `PKM-FISIO-${cleanDate}-${seq}`;
 }

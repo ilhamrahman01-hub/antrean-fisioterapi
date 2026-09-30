@@ -3,30 +3,43 @@ import { bookAntrean, findAntrean, getQueuePosition } from '@/lib/db';
 import { validateNIK, validateWhatsApp } from '@/lib/queue-rules';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
+};
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q');
   
   if (!q) {
-    return NextResponse.json({ success: false, message: 'Parameter query diperlukan' }, { status: 400 });
+    return NextResponse.json(
+      { success: false, message: 'Parameter query diperlukan (masukkan NIK atau Kode Tiket).' },
+      { status: 400, headers: noCacheHeaders }
+    );
   }
 
-  const antrean = findAntrean(q);
+  const antrean = await findAntrean(q);
   if (!antrean) {
     const looksLikeWa = /^[\s\d+-]*$/.test(q) && /^(08|628)\d{8,12}$/.test(q.replace(/[\s-+]/g, ''));
     return NextResponse.json(
       {
         success: false,
         message: looksLikeWa
-          ? 'Pencarian dengan nomor WhatsApp sudah tidak didukung. Gunakan NIK atau Kode Tiket Anda.'
-          : 'Antrean tidak ditemukan. Pastikan NIK atau Kode Tiket yang dimasukkan benar.',
+          ? 'Pencarian dengan nomor WhatsApp tidak didukung. Silakan gunakan NIK (16 digit) atau Kode Tiket Anda.'
+          : 'Data karcis antrean tidak ditemukan. Pastikan nomor NIK atau Kode Tiket yang dimasukkan benar.',
       },
-      { status: 404 }
+      { status: 404, headers: noCacheHeaders }
     );
   }
 
-  return NextResponse.json({ success: true, data: { ...antrean, queuePosition: getQueuePosition(antrean) } });
+  const queuePosition = await getQueuePosition(antrean);
+
+  return NextResponse.json(
+    { success: true, data: { ...antrean, queuePosition } },
+    { headers: noCacheHeaders }
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -37,21 +50,27 @@ export async function POST(req: NextRequest) {
     if (!tanggalKunjungan || !nik || !namaPasien || !noWa) {
       return NextResponse.json(
         { success: false, message: 'Seluruh data pendaftaran wajib diisi lengkap.' },
-        { status: 400 }
+        { status: 400, headers: noCacheHeaders }
       );
     }
 
     const nikCheck = validateNIK(nik);
     if (!nikCheck.valid) {
-      return NextResponse.json({ success: false, message: nikCheck.message }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: nikCheck.message },
+        { status: 400, headers: noCacheHeaders }
+      );
     }
 
     const waCheck = validateWhatsApp(noWa);
     if (!waCheck.valid) {
-      return NextResponse.json({ success: false, message: waCheck.message }, { status: 400 });
+      return NextResponse.json(
+        { success: false, message: waCheck.message },
+        { status: 400, headers: noCacheHeaders }
+      );
     }
 
-    const result = bookAntrean({
+    const result = await bookAntrean({
       tanggalKunjungan,
       nik: nik.replace(/\s+/g, ''),
       namaPasien: namaPasien.trim(),
@@ -59,18 +78,23 @@ export async function POST(req: NextRequest) {
       tipePendaftar: tipePendaftar === 'KELUARGA_KADER' ? 'KELUARGA_KADER' : 'MANDIRI',
     });
 
-    if (!result.success) {
-      return NextResponse.json({ success: false, message: result.message }, { status: 400 });
+    if (!result.success || !result.antrean) {
+      return NextResponse.json(
+        { success: false, message: result.message || 'Gagal mendaftar antrean' },
+        { status: 400, headers: noCacheHeaders }
+      );
     }
 
+    const queuePosition = await getQueuePosition(result.antrean);
+
     return NextResponse.json(
-      { success: true, data: { ...result.antrean, queuePosition: getQueuePosition(result.antrean!) } },
-      { status: 201 }
+      { success: true, data: { ...result.antrean, queuePosition } },
+      { status: 201, headers: noCacheHeaders }
     );
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, message: 'Terjadi kesalahan sistem saat memproses antrean' },
-      { status: 500 }
+      { success: false, message: 'Terjadi kesalahan sistem saat memproses antrean. Silakan coba kembali.' },
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
