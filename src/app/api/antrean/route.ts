@@ -10,36 +10,44 @@ const noCacheHeaders = {
 };
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get('q');
-  
-  if (!q) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const q = searchParams.get('q');
+    
+    if (!q) {
+      return NextResponse.json(
+        { success: false, message: 'Parameter query diperlukan (masukkan NIK atau Kode Tiket).' },
+        { status: 400, headers: noCacheHeaders }
+      );
+    }
+
+    const antrean = await findAntrean(q);
+    if (!antrean) {
+      const looksLikeWa = /^[\s\d+-]*$/.test(q) && /^(08|628)\d{8,12}$/.test(q.replace(/[\s-+]/g, ''));
+      return NextResponse.json(
+        {
+          success: false,
+          message: looksLikeWa
+            ? 'Pencarian dengan nomor WhatsApp tidak didukung. Silakan gunakan NIK (16 digit) atau Kode Tiket Anda.'
+            : 'Data karcis antrean tidak ditemukan. Pastikan nomor NIK atau Kode Tiket yang dimasukkan benar.',
+        },
+        { status: 404, headers: noCacheHeaders }
+      );
+    }
+
+    const queuePosition = await getQueuePosition(antrean);
+
     return NextResponse.json(
-      { success: false, message: 'Parameter query diperlukan (masukkan NIK atau Kode Tiket).' },
-      { status: 400, headers: noCacheHeaders }
+      { success: true, data: { ...antrean, queuePosition } },
+      { headers: noCacheHeaders }
+    );
+  } catch (err: any) {
+    console.error('Error in GET /api/antrean:', err);
+    return NextResponse.json(
+      { success: false, message: 'Terjadi kesalahan saat mencari karcis antrean.' },
+      { status: 500, headers: noCacheHeaders }
     );
   }
-
-  const antrean = await findAntrean(q);
-  if (!antrean) {
-    const looksLikeWa = /^[\s\d+-]*$/.test(q) && /^(08|628)\d{8,12}$/.test(q.replace(/[\s-+]/g, ''));
-    return NextResponse.json(
-      {
-        success: false,
-        message: looksLikeWa
-          ? 'Pencarian dengan nomor WhatsApp tidak didukung. Silakan gunakan NIK (16 digit) atau Kode Tiket Anda.'
-          : 'Data karcis antrean tidak ditemukan. Pastikan nomor NIK atau Kode Tiket yang dimasukkan benar.',
-      },
-      { status: 404, headers: noCacheHeaders }
-    );
-  }
-
-  const queuePosition = await getQueuePosition(antrean);
-
-  return NextResponse.json(
-    { success: true, data: { ...antrean, queuePosition } },
-    { headers: noCacheHeaders }
-  );
 }
 
 export async function POST(req: NextRequest) {

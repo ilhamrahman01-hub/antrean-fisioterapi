@@ -212,7 +212,7 @@ export async function getAntreanByTanggal(tanggal: string): Promise<Antrean[]> {
   const all = await readAllAntrean();
   return all
     .filter(a => a.tanggalKunjungan === tanggal)
-    .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar));
+    .sort((a, b) => (a.waktuDaftar || '').localeCompare(b.waktuDaftar || ''));
 }
 
 /**
@@ -414,7 +414,7 @@ export async function findAntrean(query: string): Promise<Antrean | null> {
   if (digitsOnly.length >= 10) {
     const byNik = allAntrean
       .filter(a => a.nik === digitsOnly || a.nik === clean)
-      .sort((a, b) => b.waktuDaftar.localeCompare(a.waktuDaftar));
+      .sort((a, b) => (b.waktuDaftar || '').localeCompare(a.waktuDaftar || ''));
 
     if (byNik.length > 0) {
       // Prioritaskan tiket yang aktif (belum batal)
@@ -432,7 +432,7 @@ export async function getQueuePosition(antrean: Antrean): Promise<number> {
   const allAntrean = await readAllAntrean();
   const dayActive = allAntrean
     .filter(a => a.tanggalKunjungan === antrean.tanggalKunjungan && a.status !== 'BATAL')
-    .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar));
+    .sort((a, b) => (a.waktuDaftar || '').localeCompare(b.waktuDaftar || ''));
   const idx = dayActive.findIndex(a => a.id === antrean.id);
   return idx === -1 ? 0 : idx + 1;
 }

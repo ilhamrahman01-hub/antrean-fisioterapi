@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     if (action === 'panggil_berikutnya') {
       const nextWaiting = all
         .filter(a => a.tanggalKunjungan === todayStr && a.status === 'MENUNGGU')
-        .sort((a, b) => a.waktuDaftar.localeCompare(b.waktuDaftar))[0];
+        .sort((a, b) => (a.waktuDaftar || '').localeCompare(b.waktuDaftar || ''))[0];
 
       if (!nextWaiting) {
         return NextResponse.json(
