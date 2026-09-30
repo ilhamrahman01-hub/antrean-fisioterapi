@@ -10,13 +10,30 @@ const noCacheHeaders = {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } | Promise<{ id: string }> }
 ) {
   try {
-    const id = params?.id;
+    const resolvedParams = await Promise.resolve(params);
+    let id = resolvedParams?.id;
+    
+    if (!id) {
+      const segments = req.nextUrl.pathname.split('/');
+      const batalIdx = segments.indexOf('batal');
+      if (batalIdx > 0) {
+        id = decodeURIComponent(segments[batalIdx - 1]);
+      }
+    }
+
+    if (!id) {
+      try {
+        const body = await req.json();
+        id = body?.id || body?.kodeTiket;
+      } catch {}
+    }
+
     if (!id) {
       return NextResponse.json(
-        { success: false, message: 'ID Tiket diperlukan.' },
+        { success: false, message: 'ID atau Kode Tiket diperlukan.' },
         { status: 400, headers: noCacheHeaders }
       );
     }

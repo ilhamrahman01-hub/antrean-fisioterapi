@@ -22,18 +22,24 @@ let memoryAntrean: Antrean[] | null = null;
 let memoryAntreanTime = 0;
 let memoryPoliState: any = null;
 let memoryPoliTime = 0;
-const CACHE_TTL_MS = 1500; // 1.5 detik TTL untuk read cache
+const CACHE_TTL_MS = 500; // 500ms TTL untuk read cache
 
 /**
- * Helper untuk membaca JSON dari Vercel Blob menggunakan downloadUrl (bebas stale edge cache)
+ * Helper untuk membaca JSON dari Vercel Blob menggunakan downloadUrl dengan cache-buster
  */
 async function fetchBlobJson<T>(pathname: string, defaultVal: T): Promise<T> {
   if (!BLOB_TOKEN) return defaultVal;
   try {
     const headRes = await head(pathname, { token: BLOB_TOKEN });
     if (headRes && headRes.downloadUrl) {
-      const resp = await fetch(headRes.downloadUrl, {
-        headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
+      const sep = headRes.downloadUrl.includes('?') ? '&' : '?';
+      const noCacheUrl = `${headRes.downloadUrl}${sep}_t=${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const resp = await fetch(noCacheUrl, {
+        headers: {
+          Authorization: `Bearer ${BLOB_TOKEN}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
         cache: 'no-store'
       });
       if (resp.ok) {
@@ -59,6 +65,7 @@ async function saveBlobJson(pathname: string, data: any): Promise<void> {
       access: 'private',
       addRandomSuffix: false,
       allowOverwrite: true,
+      cacheControlMaxAge: 0,
       token: BLOB_TOKEN
     });
   } catch (err) {
