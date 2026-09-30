@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { put, get } from '@vercel/blob';
+import { put, head } from '@vercel/blob';
 import { Antrean, KuotaHari, StatusPoli } from './types';
 import {
   formatQueueNumber,
@@ -23,6 +23,48 @@ let memoryAntreanTime = 0;
 let memoryPoliState: any = null;
 let memoryPoliTime = 0;
 const CACHE_TTL_MS = 1500; // 1.5 detik TTL untuk read cache
+
+/**
+ * Helper untuk membaca JSON dari Vercel Blob menggunakan downloadUrl (bebas stale edge cache)
+ */
+async function fetchBlobJson<T>(pathname: string, defaultVal: T): Promise<T> {
+  if (!BLOB_TOKEN) return defaultVal;
+  try {
+    const headRes = await head(pathname, { token: BLOB_TOKEN });
+    if (headRes && headRes.downloadUrl) {
+      const resp = await fetch(headRes.downloadUrl, {
+        headers: { Authorization: `Bearer ${BLOB_TOKEN}` },
+        cache: 'no-store'
+      });
+      if (resp.ok) {
+        const text = await resp.text();
+        return JSON.parse(text) as T;
+      }
+    }
+  } catch (err: any) {
+    if (err?.status !== 404 && !String(err?.message || '').includes('404')) {
+      console.warn(`Blob read warning (${pathname}):`, err?.message || err);
+    }
+  }
+  return defaultVal;
+}
+
+/**
+ * Helper untuk menyimpan JSON ke Vercel Blob dengan overwrite terjamin
+ */
+async function saveBlobJson(pathname: string, data: any): Promise<void> {
+  if (!BLOB_TOKEN) return;
+  try {
+    await put(pathname, JSON.stringify(data), {
+      access: 'private',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      token: BLOB_TOKEN
+    });
+  } catch (err) {
+    console.error(`Blob save error (${pathname}):`, err);
+  }
+}
 
 /**
  * Helper untuk mendapatkan waktu WIB (UTC+7)
@@ -60,25 +102,11 @@ export async function readAllAntrean(): Promise<Antrean[]> {
 
   // 1. Coba baca dari Vercel Blob jika token tersedia
   if (BLOB_TOKEN) {
-    try {
-      // Ambil blob dari URL tetap antrean.json di private store
-      const blobRes = await get('antrean.json', {
-        access: 'private',
-        token: BLOB_TOKEN
-      });
-
-      if (blobRes && blobRes.stream) {
-        const text = await new Response(blobRes.stream).text();
-        const parsed = JSON.parse(text) as Antrean[];
-        memoryAntrean = parsed;
-        memoryAntreanTime = now;
-        return parsed;
-      }
-    } catch (blobErr: any) {
-      // Jika blob belum ada (404), lanjutkan fallback ke local / initial
-      if (blobErr?.status !== 404 && blobErr?.message?.indexOf('404') === -1) {
-        console.warn('Vercel Blob read warning:', blobErr?.message || blobErr);
-      }
+    const fromBlob = await fetchBlobJson<Antrean[] | null>('antrean.json', null);
+    if (fromBlob !== null && Array.isArray(fromBlob)) {
+      memoryAntrean = fromBlob;
+      memoryAntreanTime = now;
+      return fromBlob;
     }
   }
 
@@ -116,17 +144,7 @@ export async function saveAllAntrean(data: Antrean[]): Promise<void> {
   } catch {}
 
   // Simpan ke Vercel Blob jika token tersedia
-  if (BLOB_TOKEN) {
-    try {
-      await put('antrean.json', JSON.stringify(data), {
-        access: 'private',
-        addRandomSuffix: false,
-        token: BLOB_TOKEN
-      });
-    } catch (err) {
-      console.error('Vercel Blob save error:', err);
-    }
-  }
+  await saveBlobJson('antrean.json', data);
 }
 
 /**
@@ -145,19 +163,12 @@ export async function getPoliState(): Promise<{ antreanSekarang: string | null; 
   };
 
   if (BLOB_TOKEN) {
-    try {
-      const blobRes = await get('poli_state.json', {
-        access: 'private',
-        token: BLOB_TOKEN
-      });
-      if (blobRes && blobRes.stream) {
-        const text = await new Response(blobRes.stream).text();
-        const parsed = JSON.parse(text);
-        memoryPoliState = parsed;
-        memoryPoliTime = now;
-        return parsed;
-      }
-    } catch {}
+    const fromBlob = await fetchBlobJson<typeof defaultState | null>('poli_state.json', null);
+    if (fromBlob !== null && typeof fromBlob === 'object') {
+      memoryPoliState = fromBlob;
+      memoryPoliTime = now;
+      return fromBlob;
+    }
   }
 
   ensureLocalDir();
@@ -190,18 +201,7 @@ export async function setPoliState(newState: Partial<{ antreanSekarang: string |
     fs.writeFileSync(POLI_STATE_FILE, JSON.stringify(updated, null, 2), 'utf-8');
   } catch {}
 
-  if (BLOB_TOKEN) {
-    try {
-      await put('poli_state.json', JSON.stringify(updated), {
-        access: 'private',
-        addRandomSuffix: false,
-        token: BLOB_TOKEN
-      });
-    } catch (err) {
-      console.error('Vercel Blob poli state error:', err);
-    }
-  }
-
+  await saveBlobJson('poli_state.json', updated);
   return updated;
 }
 
