@@ -84,3 +84,42 @@ Terima kasih atas informasinya.`;
 
   return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
 }
+
+/**
+ * Buat tautan WhatsApp pengingat H-1 jadwal kunjungan antrean
+ */
+export function generateWhatsAppReminderH1Link(antrean: Antrean, baseUrl?: string): string {
+  const host = getBaseUrl(baseUrl);
+  const ticketUrl = `${host}/tiket/${antrean.id}`;
+
+  const message =
+`*PENGINGAT KUNJUNGAN POLI FISIOTERAPI (H-1)*
+*PUSKESMAS PRACIMANTORO 1*
+
+Halo Bpk/Ibu *${antrean.namaPasien}*,
+Mengingatkan kembali reservasi sesi Fisioterapi Anda untuk besok:
+
+📅 *Hari/Tanggal:* ${formatTanggalIndo(antrean.tanggalKunjungan)}
+⏰ *Jam Layanan:* 08.00 - 12.00 WIB
+📍 *Lokasi:* Poli Fisioterapi (Ruang 103)
+🔖 *Kode Tiket:* ${antrean.kodeTiket}
+
+ℹ️ *Petunjuk Kehadiran:*
+• Pelayanan dilayani berdasarkan urutan kedatangan di ruang poli (First Come, First Served).
+• Harap hadir tepat waktu dengan membawa KTP & kartu BPJS asli.
+• Jika berhalangan hadir, mohon batalkan antrean melalui tautan karcis digital agar kuota dapat digunakan oleh pasien lain yang membutuhkan.
+
+🔗 *Karcis Digital:*
+${ticketUrl}
+
+Terima kasih.`;
+
+  const cleanPhone = (antrean.noWa || '').replace(/[\s-+]/g, '');
+  let formattedPhone = cleanPhone;
+  if (cleanPhone.startsWith('0')) {
+    formattedPhone = '62' + cleanPhone.slice(1);
+  }
+
+  return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`;
+}
+

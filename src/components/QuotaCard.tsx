@@ -16,7 +16,8 @@ export default function QuotaCard({ kuotaList, selectedDate, onSelectDate }: Pro
       <div className="flex gap-3.5 overflow-x-auto pb-4 snap-x hide-scrollbar">
         {kuotaList.map((item) => {
           const isSelected = selectedDate === item.tanggal;
-          const isFull = item.status === 'PENUH';
+          const isFull = item.status === 'PENUH' || !item.isBisaDaftar;
+          const isOnlineFull = item.sisaKuotaOnline !== undefined ? item.sisaKuotaOnline === 0 : isFull;
           const dayNum = item.tanggal.split('-')[2];
 
           return (
@@ -58,10 +59,10 @@ export default function QuotaCard({ kuotaList, selectedDate, onSelectDate }: Pro
                 {isFull ? (
                   <div className="text-left leading-tight">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-red-100 block">
-                      Kuota Penuh
+                      {isOnlineFull ? 'Online Penuh' : 'Kuota Penuh'}
                     </span>
                     <span className="text-[10px] text-red-200 font-medium">
-                      (0 kuota tersisa)
+                      {isOnlineFull ? 'Sisa Loket Offline' : '(0 kuota tersisa)'}
                     </span>
                   </div>
                 ) : (
@@ -74,7 +75,7 @@ export default function QuotaCard({ kuotaList, selectedDate, onSelectDate }: Pro
                     <span className={`text-xs font-black tracking-wide ${
                       isSelected ? 'text-white' : item.status === 'SISA_SEDIKIT' ? 'text-amber-900' : 'text-brand-dark'
                     }`}>
-                      Tersedia: {item.sisaKuota} Pasien
+                      Online: {item.sisaKuotaOnline ?? item.sisaKuota} / 6
                     </span>
                   </div>
                 )}

@@ -1,5 +1,7 @@
 export type TipePendaftar = 'MANDIRI' | 'KELUARGA_KADER';
 
+export type JalurPendaftaran = 'ONLINE' | 'OFFLINE';
+
 export type StatusAntrean = 'MENUNGGU' | 'DIPANGGIL' | 'SELESAI' | 'BATAL' | 'TIDAK_HADIR';
 
 export interface Antrean {
@@ -11,6 +13,7 @@ export interface Antrean {
   namaPasien: string;
   noWa: string;
   tipePendaftar: TipePendaftar;
+  jalur?: JalurPendaftaran; // 'ONLINE' (default) atau 'OFFLINE' (loket)
   status: StatusAntrean;
   waktuDaftar: string;  // ISO string
   waktuDipanggil?: string;
@@ -25,9 +28,15 @@ export interface KuotaHari {
   kuotaMaksimal: number; // 10
   kuotaTerisi: number;
   sisaKuota: number;
+  kuotaOnlineMaksimal: number; // 6
+  kuotaOnlineTerisi: number;
+  sisaKuotaOnline: number;
+  kuotaOfflineMaksimal: number; // 4
+  kuotaOfflineTerisi: number;
+  sisaKuotaOffline: number;
   status: 'PENUH' | 'SISA_SEDIKIT' | 'TERSEDIA' | 'TUTUP';
   catatan?: string;
-  isBisaDaftar: boolean;
+  isBisaDaftar: boolean; // Khusus pendaftaran online pasien
 }
 
 export interface StatusPoli {

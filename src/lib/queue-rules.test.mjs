@@ -9,8 +9,17 @@ import {
   validateWhatsApp,
   maskNIK,
   generateKodeTiket,
-  MAX_KUOTA_HARIAN
+  MAX_KUOTA_HARIAN,
+  MAX_KUOTA_ONLINE,
+  MAX_KUOTA_OFFLINE
 } from './queue-rules.js';
+
+test('Quota split is 6 online and 4 offline (Total 10)', () => {
+  assert.strictEqual(MAX_KUOTA_HARIAN, 10);
+  assert.strictEqual(MAX_KUOTA_ONLINE, 6);
+  assert.strictEqual(MAX_KUOTA_OFFLINE, 4);
+  assert.strictEqual(MAX_KUOTA_ONLINE + MAX_KUOTA_OFFLINE, MAX_KUOTA_HARIAN);
+});
 
 test('isOperationalDay returns true for Senin s/d Kamis, false for Jumat-Minggu', () => {
   // 2026-09-14 is Monday (Senin) -> true

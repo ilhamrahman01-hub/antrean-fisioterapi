@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
       namaPasien: namaPasien.trim(),
       noWa: noWa.trim(),
       tipePendaftar: tipePendaftar === 'KELUARGA_KADER' ? 'KELUARGA_KADER' : 'MANDIRI',
+      jalur: 'ONLINE',
     });
 
     if (!result.success || !result.antrean) {

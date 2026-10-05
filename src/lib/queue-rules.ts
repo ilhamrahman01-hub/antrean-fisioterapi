@@ -1,4 +1,6 @@
 export const MAX_KUOTA_HARIAN = 10;
+export const MAX_KUOTA_ONLINE = 6;
+export const MAX_KUOTA_OFFLINE = 4;
 
 /**
  * Cek apakah hari adalah hari operasional Poli Fisioterapi (Senin s/d Kamis).

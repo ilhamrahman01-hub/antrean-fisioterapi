@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readAllAntrean, saveAllAntrean, getPoliState, setPoliState, getWIBDate, getAntreanByTanggal } from '@/lib/db';
+import { readAllAntrean, saveAllAntrean, getPoliState, setPoliState, getWIBDate, getAntreanByTanggal, bookAntrean } from '@/lib/db';
+import { validateNIK, validateWhatsApp } from '@/lib/queue-rules';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -125,10 +126,59 @@ export async function POST(req: NextRequest) {
         target.status = 'BATAL';
         target.waktuBatal = wib.toISOString();
         await saveAllAntrean(all);
+        return NextResponse.json(
+          { success: true, message: 'Antrean berhasil dibatalkan oleh petugas.', data: target },
+          { headers: noCacheHeaders }
+        );
       }
       return NextResponse.json(
-        { success: true, message: 'Antrean berhasil dibatalkan oleh petugas.' },
-        { headers: noCacheHeaders }
+        { success: false, message: 'Data antrean tidak ditemukan.' },
+        { status: 404, headers: noCacheHeaders }
+      );
+    }
+
+    if (action === 'tambah_offline') {
+      const { tanggalKunjungan, nik, namaPasien, noWa } = body;
+      if (!tanggalKunjungan || !nik || !namaPasien) {
+        return NextResponse.json(
+          { success: false, message: 'Tanggal kunjungan, NIK, dan nama pasien wajib diisi.' },
+          { status: 400, headers: noCacheHeaders }
+        );
+      }
+      const nikCheck = validateNIK(nik);
+      if (!nikCheck.valid) {
+        return NextResponse.json({ success: false, message: nikCheck.message }, { status: 400, headers: noCacheHeaders });
+      }
+      if (noWa && noWa.trim() && noWa.trim() !== '-') {
+        const waCheck = validateWhatsApp(noWa);
+        if (!waCheck.valid) {
+          return NextResponse.json({ success: false, message: waCheck.message }, { status: 400, headers: noCacheHeaders });
+        }
+      }
+
+      const result = await bookAntrean({
+        tanggalKunjungan,
+        nik: nik.replace(/\s+/g, ''),
+        namaPasien: namaPasien.trim(),
+        noWa: (noWa || '-').trim(),
+        tipePendaftar: 'MANDIRI',
+        jalur: 'OFFLINE'
+      });
+
+      if (!result.success || !result.antrean) {
+        return NextResponse.json(
+          { success: false, message: result.message || 'Gagal mendaftarkan pasien offline' },
+          { status: 400, headers: noCacheHeaders }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: `Pasien offline ${result.antrean.namaPasien} (${result.antrean.kodeTiket}) berhasil didaftarkan.`,
+          data: result.antrean
+        },
+        { status: 201, headers: noCacheHeaders }
       );
     }
 

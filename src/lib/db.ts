@@ -8,7 +8,9 @@ import {
   formatTanggalIndo,
   isOperationalDay,
   parseSequence,
-  MAX_KUOTA_HARIAN
+  MAX_KUOTA_HARIAN,
+  MAX_KUOTA_ONLINE,
+  MAX_KUOTA_OFFLINE
 } from './queue-rules';
 
 const BLOB_TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
@@ -242,10 +244,20 @@ export async function getOperationalDaysQuota(): Promise<KuotaHari[]> {
       
       const kuotaTerisi = activeAntrean.length;
       const sisaKuota = Math.max(0, MAX_KUOTA_HARIAN - kuotaTerisi);
+
+      // Hitung rincian kuota Online (maks 6) vs Offline (maks 4)
+      const onlineActive = activeAntrean.filter(a => (a.jalur || 'ONLINE') === 'ONLINE');
+      const offlineActive = activeAntrean.filter(a => a.jalur === 'OFFLINE');
+
+      const kuotaOnlineTerisi = onlineActive.length;
+      const sisaKuotaOnline = Math.max(0, MAX_KUOTA_ONLINE - kuotaOnlineTerisi);
+
+      const kuotaOfflineTerisi = offlineActive.length;
+      const sisaKuotaOffline = Math.max(0, MAX_KUOTA_OFFLINE - kuotaOfflineTerisi);
       
       let status: KuotaHari['status'] = 'TERSEDIA';
-      let catatan = `Tersedia ${sisaKuota} kuota pasien`;
-      let isBisaDaftar = sisaKuota > 0;
+      let catatan = `Tersedia ${sisaKuotaOnline} kuota online (${sisaKuotaOffline} kuota offline loket)`;
+      let isBisaDaftar = sisaKuotaOnline > 0 && sisaKuota > 0;
 
       const todayStr = getFormattedDate(now);
       const isPastCutoffToday = (dateStr === todayStr && now.getHours() >= 12);
@@ -254,13 +266,13 @@ export async function getOperationalDaysQuota(): Promise<KuotaHari[]> {
         status = 'PENUH';
         catatan = 'Pendaftaran ditutup (melewati jam 12:00 WIB)';
         isBisaDaftar = false;
-      } else if (sisaKuota === 0) {
+      } else if (sisaKuotaOnline === 0) {
         status = 'PENUH';
-        catatan = 'Pendaftaran ditutup karena kuota maksimal 10 pasien telah tercapai';
+        catatan = 'Kuota pendaftaran online penuh (6/6). Tersedia 4 kuota pendaftaran langsung (offline) di loket Puskesmas.';
         isBisaDaftar = false;
-      } else if (sisaKuota <= 3) {
+      } else if (sisaKuotaOnline <= 2) {
         status = 'SISA_SEDIKIT';
-        catatan = `Sisa sedikit: ${sisaKuota} kuota lagi hari ini!`;
+        catatan = `Sisa sedikit: ${sisaKuotaOnline} kuota online lagi!`;
       }
 
       const hariNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -272,6 +284,12 @@ export async function getOperationalDaysQuota(): Promise<KuotaHari[]> {
         kuotaMaksimal: MAX_KUOTA_HARIAN,
         kuotaTerisi,
         sisaKuota,
+        kuotaOnlineMaksimal: MAX_KUOTA_ONLINE,
+        kuotaOnlineTerisi,
+        sisaKuotaOnline,
+        kuotaOfflineMaksimal: MAX_KUOTA_OFFLINE,
+        kuotaOfflineTerisi,
+        sisaKuotaOffline,
         status,
         catatan,
         isBisaDaftar
@@ -284,8 +302,7 @@ export async function getOperationalDaysQuota(): Promise<KuotaHari[]> {
 }
 
 /**
- * Reservasi antrean baru dengan garansi kuota maksimal 10 pasien.
- * Menghilangkan bug off-by-one dan memastikan pasien ke-9 & ke-10 bisa daftar.
+ * Reservasi antrean baru dengan garansi kuota maksimal 10 pasien (6 online + 4 offline).
  */
 export async function bookAntrean(params: {
   tanggalKunjungan: string;
@@ -293,9 +310,11 @@ export async function bookAntrean(params: {
   namaPasien: string;
   noWa: string;
   tipePendaftar: Antrean['tipePendaftar'];
+  jalur?: Antrean['jalur'];
 }): Promise<{ success: boolean; antrean?: Antrean; message?: string }> {
   const allAntrean = await readAllAntrean();
   const cleanNik = params.nik.replace(/\D/g, '');
+  const targetJalur: Antrean['jalur'] = params.jalur === 'OFFLINE' ? 'OFFLINE' : 'ONLINE';
 
   // 0. Idempotensi double-submit: NIK yang sudah punya tiket AKTIF di tanggal
   // yang sama langsung dikembalikan (bukan error, bukan tiket ganda).
@@ -343,8 +362,27 @@ export async function bookAntrean(params: {
   if (activeCount >= MAX_KUOTA_HARIAN) {
     return {
       success: false,
-      message: `Mohon maaf, kuota untuk ${formatTanggalIndo(params.tanggalKunjungan)} sudah PENUH (Maksimal 10 pasien). Silakan pilih hari lain.`
+      message: `Mohon maaf, kuota total untuk ${formatTanggalIndo(params.tanggalKunjungan)} sudah PENUH (Maksimal 10 pasien). Silakan pilih hari lain.`
     };
+  }
+
+  // 2b. Validasi Kuota Jalur (Online: maks 6, Offline: maks 4)
+  if (targetJalur === 'ONLINE') {
+    const onlineCount = dayList.filter(a => a.status !== 'BATAL' && (a.jalur || 'ONLINE') === 'ONLINE').length;
+    if (onlineCount >= MAX_KUOTA_ONLINE) {
+      return {
+        success: false,
+        message: `Mohon maaf, kuota pendaftaran online untuk ${formatTanggalIndo(params.tanggalKunjungan)} sudah PENUH (Maksimal 6 pasien). Sisa 4 kuota dialokasikan khusus untuk pendaftaran langsung (offline) di loket Puskesmas pada hari H.`
+      };
+    }
+  } else if (targetJalur === 'OFFLINE') {
+    const offlineCount = dayList.filter(a => a.status !== 'BATAL' && a.jalur === 'OFFLINE').length;
+    if (offlineCount >= MAX_KUOTA_OFFLINE) {
+      return {
+        success: false,
+        message: `Mohon maaf, kuota offline (loket) untuk ${formatTanggalIndo(params.tanggalKunjungan)} sudah PENUH (Maksimal 4 pasien).`
+      };
+    }
   }
 
   // 3. Alokasi slot: slot nomor urut 01-10 berdasarkan kuota terisi aktif + 1
@@ -360,6 +398,7 @@ export async function bookAntrean(params: {
     namaPasien: params.namaPasien.trim(),
     noWa: params.noWa.trim(),
     tipePendaftar: params.tipePendaftar,
+    jalur: targetJalur,
     status: 'MENUNGGU',
     waktuDaftar: getWIBDate().toISOString()
   };

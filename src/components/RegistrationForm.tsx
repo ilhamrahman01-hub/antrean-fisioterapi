@@ -21,7 +21,7 @@ export default function RegistrationForm({ kuotaList, selectedDate }: Props) {
   const [errorMessage, setErrorMessage] = useState('');
 
   const selectedDayInfo = kuotaList.find((k) => k.tanggal === selectedDate);
-  const isFull = selectedDayInfo?.status === 'PENUH';
+  const isOnlineFull = selectedDayInfo ? (!selectedDayInfo.isBisaDaftar || (selectedDayInfo.sisaKuotaOnline !== undefined && selectedDayInfo.sisaKuotaOnline <= 0)) : false;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,8 +32,8 @@ export default function RegistrationForm({ kuotaList, selectedDate }: Props) {
       return;
     }
 
-    if (isFull) {
-      setErrorMessage('Kuota pada tanggal yang dipilih telah penuh. Silakan pilih hari lain.');
+    if (isOnlineFull) {
+      setErrorMessage('Kuota pendaftaran online untuk hari ini telah penuh (6/6). Tersedia 4 kuota langsung di loket Puskesmas pada hari H, atau silakan pilih tanggal lain.');
       return;
     }
 
@@ -109,6 +109,15 @@ export default function RegistrationForm({ kuotaList, selectedDate }: Props) {
         </div>
       )}
 
+      {isOnlineFull && selectedDayInfo && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-300 text-amber-900 text-xs font-medium leading-relaxed">
+          <span className="font-bold uppercase tracking-wider block mb-1">
+            ⚠️ Kuota Pendaftaran Online Penuh (6/6)
+          </span>
+          Kuota reservasi online untuk tanggal <strong>{selectedDayInfo.tanggalFormatted}</strong> telah habis (maksimal 6 pasien). Sisa 4 kuota dialokasikan khusus untuk pendaftaran langsung (offline di loket Puskesmas pada hari H). Silakan pilih tanggal lain jika ingin reservasi online.
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* 1. Input NIK */}
         <div className="relative">
@@ -166,14 +175,14 @@ export default function RegistrationForm({ kuotaList, selectedDate }: Props) {
         <div className="pt-4">
            <button
              type="submit"
-             disabled={loading || !selectedDate || isFull}
+             disabled={loading || !selectedDate || isOnlineFull}
              className={`w-full py-4 font-bold text-xs uppercase tracking-widest transition shadow-sm ${
-               loading || !selectedDate || isFull
+               loading || !selectedDate || isOnlineFull
                  ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                  : 'bg-brand-dark text-white hover:bg-black active:scale-[0.99]'
              }`}
            >
-             {loading ? 'MEMPROSES RESERVASI...' : isFull ? 'KUOTA HARI INI PENUH' : 'RESERVASI KUOTA SEKARANG'}
+             {loading ? 'MEMPROSES RESERVASI...' : isOnlineFull ? 'KUOTA ONLINE HARI INI PENUH (6/6)' : 'RESERVASI KUOTA SEKARANG'}
            </button>
         </div>
       </form>

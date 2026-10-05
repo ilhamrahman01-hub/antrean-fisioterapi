@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { Antrean } from '@/lib/types';
-import { maskNIK, formatTanggalIndo } from '@/lib/queue-rules';
+import { formatTanggalIndo } from '@/lib/queue-rules';
+import { generateWhatsAppReminderH1Link, generateWhatsAppCancelLink } from '@/lib/whatsapp';
 
 export default function PetugasPage() {
   const [pin, setPin] = useState('');
@@ -19,6 +20,7 @@ export default function PetugasPage() {
   const [selectedDate, setSelectedDate] = useState(getWibTodayStr());
   const [antreanList, setAntreanList] = useState<Antrean[]>([]);
   const [loadingAction, setLoadingAction] = useState(false);
+  const [copiedNik, setCopiedNik] = useState<string | null>(null);
 
   // Edit Modal State
   const [editItem, setEditItem] = useState<Antrean | null>(null);
@@ -26,6 +28,16 @@ export default function PetugasPage() {
   const [editNama, setEditNama] = useState('');
   const [editWa, setEditWa] = useState('');
   const [editError, setEditError] = useState('');
+
+  // Add Offline Modal State
+  const [showAddOfflineModal, setShowAddOfflineModal] = useState(false);
+  const [offlineNik, setOfflineNik] = useState('');
+  const [offlineNama, setOfflineNama] = useState('');
+  const [offlineWa, setOfflineWa] = useState('');
+  const [offlineError, setOfflineError] = useState('');
+
+  // Post-Cancel WhatsApp confirmation modal
+  const [cancelledItem, setCancelledItem] = useState<Antrean | null>(null);
 
   const refreshData = useCallback(async () => {
     if (!pin) return;
@@ -74,8 +86,16 @@ export default function PetugasPage() {
     }
   }, [selectedDate, isAuthenticated, pin, refreshData]);
 
+  function copyNikToClipboard(nik: string) {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(nik);
+      setCopiedNik(nik);
+      setTimeout(() => setCopiedNik(null), 2500);
+    }
+  }
+
   async function handleAction(action: 'panggil' | 'selesai' | 'batal', item: Antrean) {
-    if (action === 'batal' && !confirm(`Yakin ingin membatalkan antrean ${item.namaPasien}?`)) {
+    if (action === 'batal' && !confirm(`Yakin ingin membatalkan antrean ${item.namaPasien} (${item.kodeTiket})?`)) {
       return;
     }
     setLoadingAction(true);
@@ -88,6 +108,9 @@ export default function PetugasPage() {
       const data = await res.json();
       if (data.success) {
         refreshData();
+        if (action === 'batal') {
+          setCancelledItem(item);
+        }
       } else {
         alert(data.message || 'Gagal memproses aksi');
       }
@@ -131,28 +154,43 @@ export default function PetugasPage() {
     }
   }
 
-  function getWaReminderUrl(item: Antrean): string {
-    const cleanPhone = (item.noWa || '').replace(/[\s-+]/g, '');
-    let formattedPhone = cleanPhone;
-    if (cleanPhone.startsWith('0')) formattedPhone = '62' + cleanPhone.slice(1);
-
-    const text = 
-`*PENGINGAT KUNJUNGAN POLI FISIOTERAPI*
-*PUSKESMAS PRACIMANTORO 1*
-
-Halo Bpk/Ibu *${item.namaPasien}*,
-Mengingatkan kembali reservasi sesi Fisioterapi Anda untuk jadwal:
-📅 *${formatTanggalIndo(item.tanggalKunjungan)}*
-⏰ *Jam Layanan:* 08.00 - 12.00 WIB
-📍 *Lokasi:* Poli Fisioterapi (Ruang 103)
-🔖 *Kode Tiket:* ${item.kodeTiket}
-
-Pelayanan dilayani berdasarkan urutan kedatangan di ruang poli (First Come, First Served). Harap hadir membawa KTP & kartu BPJS asli.
-
-Terima kasih.`;
-
-    return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`;
+  async function handleAddOfflineSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoadingAction(true);
+    setOfflineError('');
+    try {
+      const res = await fetch('/api/petugas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pin,
+          action: 'tambah_offline',
+          tanggalKunjungan: selectedDate,
+          nik: offlineNik.trim(),
+          namaPasien: offlineNama.trim(),
+          noWa: offlineWa.trim() || '-',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowAddOfflineModal(false);
+        setOfflineNik('');
+        setOfflineNama('');
+        setOfflineWa('');
+        refreshData();
+      } else {
+        setOfflineError(data.message || 'Gagal mendaftarkan pasien offline');
+      }
+    } catch {
+      setOfflineError('Gagal menghubungi server');
+    } finally {
+      setLoadingAction(false);
+    }
   }
+
+  const onlineCount = antreanList.filter(a => (a.jalur || 'ONLINE') === 'ONLINE').length;
+  const offlineCount = antreanList.filter(a => a.jalur === 'OFFLINE').length;
+  const sisaTotal = Math.max(0, 10 - antreanList.length);
 
   if (!isAuthenticated) {
     return (
@@ -176,7 +214,7 @@ Terima kasih.`;
                 Portal Petugas Fisioterapi
               </h2>
               <p className="text-xs text-zinc-500 font-medium">
-                Khusus petugas Poli Fisioterapi untuk melihat & memverifikasi 10 peserta harian.
+                Khusus petugas Poli Fisioterapi untuk memverifikasi peserta dan mengelola antrean (6 Online + 4 Offline).
               </p>
             </div>
 
@@ -206,7 +244,7 @@ Terima kasih.`;
                   required
                 />
                 <p className="text-[10px] text-zinc-400 font-medium mt-1">
-                  Default PIN: <code className="bg-zinc-100 px-1 py-0.5">praci123</code> (dapat diatur di Environment Variables).
+                  Default PIN: <code className="bg-zinc-100 px-1 py-0.5">praci123</code>.
                 </p>
               </div>
 
@@ -255,9 +293,9 @@ Terima kasih.`;
       </header>
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-5 py-8 space-y-6">
-        {/* Controls: Date Picker & Summary */}
-        <div className="bg-white border border-zinc-200 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+        {/* Controls: Date Picker & Summary Cards */}
+        <div className="bg-white border border-zinc-200 p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <div>
               <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
                 Pilih Tanggal Kunjungan
@@ -271,27 +309,54 @@ Terima kasih.`;
             </div>
             <button
               onClick={refreshData}
-              className="sm:self-end px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-wider transition"
+              className="sm:self-end px-3.5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold uppercase tracking-wider transition"
+              title="Refresh Data"
             >
-              🔄 Refresh Data
+              🔄 Refresh
+            </button>
+            <button
+              onClick={() => {
+                setShowAddOfflineModal(true);
+                setOfflineError('');
+              }}
+              className="sm:self-end px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold uppercase tracking-wider transition flex items-center gap-1.5"
+            >
+              ➕ Tambah Pasien Offline
             </button>
           </div>
 
-          <div className="flex items-center gap-6 border-t sm:border-t-0 pt-4 sm:pt-0 border-zinc-100">
-            <div>
+          {/* Kuota Split Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 border-t lg:border-t-0 pt-4 lg:pt-0 border-zinc-100">
+            <div className="bg-zinc-50 border border-zinc-200 p-3">
               <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
                 Total Terdaftar
               </span>
-              <span className="text-2xl font-serif font-black text-brand-dark">
-                {antreanList.length} <span className="text-xs font-normal text-zinc-400">/ 10 Pasien</span>
+              <span className="text-xl font-serif font-black text-brand-dark">
+                {antreanList.length} <span className="text-xs font-normal text-zinc-400">/ 10</span>
               </span>
             </div>
-            <div>
-              <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+            <div className="bg-blue-50/60 border border-blue-200 p-3">
+              <span className="text-[10px] font-bold text-blue-700 uppercase tracking-widest block">
+                Online
+              </span>
+              <span className="text-xl font-serif font-black text-blue-950">
+                {onlineCount} <span className="text-xs font-normal text-blue-600">/ 6</span>
+              </span>
+            </div>
+            <div className="bg-amber-50/60 border border-amber-200 p-3">
+              <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest block">
+                Offline (Loket)
+              </span>
+              <span className="text-xl font-serif font-black text-amber-950">
+                {offlineCount} <span className="text-xs font-normal text-amber-600">/ 4</span>
+              </span>
+            </div>
+            <div className="bg-emerald-50/60 border border-emerald-200 p-3">
+              <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest block">
                 Sisa Kuota
               </span>
-              <span className="text-2xl font-serif font-black text-emerald-800">
-                {Math.max(0, 10 - antreanList.length)} <span className="text-xs font-normal text-zinc-400">Slot</span>
+              <span className="text-xl font-serif font-black text-emerald-900">
+                {sisaTotal} <span className="text-xs font-normal text-emerald-600">Slot</span>
               </span>
             </div>
           </div>
@@ -299,12 +364,12 @@ Terima kasih.`;
 
         {/* Tabel Pasien */}
         <div className="bg-white border border-zinc-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-zinc-200 flex items-center justify-between">
+          <div className="p-4 border-b border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <h3 className="font-serif font-black text-lg text-brand-dark">
               Daftar Pasien ({formatTanggalIndo(selectedDate)})
             </h3>
             <span className="text-xs text-zinc-500 font-medium">
-              Pelayanan: First Come, First Served
+              Pelayanan: First Come, First Served (Ruang 103 • 08.00–12.00 WIB)
             </span>
           </div>
 
@@ -320,7 +385,7 @@ Terima kasih.`;
                     <th className="py-3 px-4">No</th>
                     <th className="py-3 px-4">Kode Tiket</th>
                     <th className="py-3 px-4">Nama Pasien</th>
-                    <th className="py-3 px-4">NIK</th>
+                    <th className="py-3 px-4">NIK (Skrining)</th>
                     <th className="py-3 px-4">WhatsApp</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Aksi Petugas</th>
@@ -332,24 +397,48 @@ Terima kasih.`;
                       <td className="py-3.5 px-4 font-bold text-zinc-400">
                         {idx + 1}
                       </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-brand-dark">
-                        {item.kodeTiket}
+                      <td className="py-3.5 px-4">
+                        <div className="font-mono font-bold text-brand-dark">{item.kodeTiket}</div>
+                        <span className={`inline-block mt-0.5 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider ${
+                          item.jalur === 'OFFLINE'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : 'bg-blue-50 text-blue-800 border border-blue-200'
+                        }`}>
+                          {item.jalur === 'OFFLINE' ? 'Loket / Offline' : 'Online'}
+                        </span>
                       </td>
                       <td className="py-3.5 px-4 font-bold text-brand-dark text-sm">
                         {item.namaPasien}
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-zinc-600">
-                        {maskNIK(item.nik)}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-zinc-900 font-bold select-all tracking-wide">
+                            {item.nik}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyNikToClipboard(item.nik)}
+                            title="Salin NIK ke clipboard"
+                            className="px-1.5 py-0.5 border border-zinc-200 rounded-none bg-zinc-50 hover:bg-zinc-200 text-zinc-600 transition text-[10px] font-bold"
+                          >
+                            {copiedNik === item.nik ? '✓ Tersalin' : '📋 Salin'}
+                          </button>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
-                        <a
-                          href={getWaReminderUrl(item)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-emerald-700 hover:underline font-bold inline-flex items-center gap-1"
-                        >
-                          📱 {item.noWa}
-                        </a>
+                        {item.noWa && item.noWa !== '-' ? (
+                          <a
+                            href={generateWhatsAppReminderH1Link(item)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-emerald-700 hover:underline font-bold inline-flex items-center gap-1"
+                            title="Buka Chat WhatsApp"
+                          >
+                            📱 {item.noWa}
+                          </a>
+                        ) : (
+                          <span className="text-zinc-400 italic">-</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
@@ -362,7 +451,7 @@ Terima kasih.`;
                           {item.status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right space-x-2">
+                      <td className="py-3.5 px-4 text-right space-x-1.5 whitespace-nowrap">
                         <button
                           disabled={loadingAction}
                           onClick={() => handleAction('panggil', item)}
@@ -377,9 +466,20 @@ Terima kasih.`;
                         >
                           Selesai
                         </button>
+                        {item.noWa && item.noWa !== '-' && (
+                          <a
+                            href={generateWhatsAppReminderH1Link(item)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold uppercase tracking-wider transition inline-flex items-center gap-1"
+                            title="Kirim Pesan WhatsApp Pengingat H-1"
+                          >
+                            🔔 WA H-1
+                          </a>
+                        )}
                         <button
                           onClick={() => openEditModal(item)}
-                          className="px-2.5 py-1 border border-zinc-300 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold uppercase tracking-wider transition"
+                          className="px-2 py-1 border border-zinc-300 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold uppercase tracking-wider transition"
                         >
                           Edit
                         </button>
@@ -400,7 +500,93 @@ Terima kasih.`;
         </div>
       </main>
 
-      {/* Edit Modal */}
+      {/* Modal Tambah Pasien Offline */}
+      {showAddOfflineModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-xs">
+          <div className="bg-white border border-zinc-200 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
+            <div className="border-b border-zinc-100 pb-3">
+              <span className="text-[10px] font-bold text-amber-700 uppercase tracking-widest block">
+                Pendaftaran Langsung di Tempat
+              </span>
+              <h3 className="text-lg font-serif font-black text-brand-dark">
+                Tambah Pasien Offline (Loket)
+              </h3>
+              <p className="text-xs text-zinc-500 font-medium mt-1">
+                Jadwal Kunjungan: <strong>{formatTanggalIndo(selectedDate)}</strong>
+              </p>
+            </div>
+
+            {offlineError && (
+              <div className="p-3 bg-red-800 text-white text-xs font-bold uppercase text-center">
+                {offlineError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddOfflineSubmit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                  NIK Pasien (16 Digit) *
+                </label>
+                <input
+                  type="text"
+                  maxLength={16}
+                  value={offlineNik}
+                  onChange={(e) => setOfflineNik(e.target.value.replace(/\D/g, ''))}
+                  placeholder="331201xxxxxxxxxx"
+                  className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                  Nama Lengkap Pasien *
+                </label>
+                <input
+                  type="text"
+                  value={offlineNama}
+                  onChange={(e) => setOfflineNama(e.target.value)}
+                  placeholder="Ketik nama lengkap..."
+                  className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1">
+                  Nomor WhatsApp (Opsional)
+                </label>
+                <input
+                  type="text"
+                  value={offlineWa}
+                  onChange={(e) => setOfflineWa(e.target.value)}
+                  placeholder="Contoh: 081234567890 (atau kosongkan)"
+                  className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="submit"
+                  disabled={loadingAction}
+                  className="flex-1 py-3 bg-emerald-800 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-900 transition"
+                >
+                  {loadingAction ? 'Menyimpan...' : 'Daftarkan Pasien'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddOfflineModal(false)}
+                  className="px-4 py-3 border border-zinc-300 text-zinc-500 text-xs font-bold uppercase tracking-wider hover:bg-zinc-100 transition"
+                >
+                  Batal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Data Pasien */}
       {editItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-xs">
           <div className="bg-white border border-zinc-200 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-4">
@@ -423,7 +609,7 @@ Terima kasih.`;
                   type="text"
                   maxLength={16}
                   value={editNik}
-                  onChange={(e) => setEditNik(e.target.value)}
+                  onChange={(e) => setEditNik(e.target.value.replace(/\D/g, ''))}
                   className="w-full py-2 px-3 border border-zinc-300 text-sm font-medium focus:outline-none focus:border-brand-dark"
                   required
                 />
@@ -472,6 +658,49 @@ Terima kasih.`;
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Pembatalan & Kirim WA */}
+      {cancelledItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-xs">
+          <div className="bg-white border border-zinc-200 p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 text-center">
+            <div className="w-12 h-12 bg-red-100 text-red-700 mx-auto flex items-center justify-center font-bold text-xl rounded-full">
+              ✕
+            </div>
+            <div>
+              <h3 className="text-lg font-serif font-black text-brand-dark">
+                Antrean Berhasil Dibatalkan
+              </h3>
+              <p className="text-xs text-zinc-600 font-medium mt-2 leading-relaxed">
+                Antrean atas nama <strong>{cancelledItem.namaPasien}</strong> (Kode: <code>{cancelledItem.kodeTiket}</code>) telah dibatalkan dari sistem.
+              </p>
+            </div>
+
+            {cancelledItem.noWa && cancelledItem.noWa !== '-' && (
+              <div className="pt-2">
+                <a
+                  href={generateWhatsAppCancelLink(cancelledItem)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setCancelledItem(null)}
+                  className="w-full py-3 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold uppercase tracking-wider block transition"
+                >
+                  📲 Kirim Konfirmasi Pembatalan ke WhatsApp
+                </a>
+              </div>
+            )}
+
+            <div>
+              <button
+                type="button"
+                onClick={() => setCancelledItem(null)}
+                className="w-full py-2.5 border border-zinc-300 text-zinc-600 hover:bg-zinc-100 text-xs font-bold uppercase tracking-wider transition"
+              >
+                Tutup
+              </button>
+            </div>
           </div>
         </div>
       )}

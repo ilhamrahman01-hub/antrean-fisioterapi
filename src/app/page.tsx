@@ -110,14 +110,14 @@ export default function Home() {
               </span>
               <span className="text-zinc-300">•</span>
               <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">
-                Kuota Terbatas 10 Pasien/Hari
+                Kuota: 6 Online + 4 Offline (Total 10 Pasien/Hari)
               </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-serif font-black text-brand-dark tracking-tight leading-[1.15]">
               Reservasi Kuota<br/>Poli Fisioterapi.
             </h1>
             <p className="text-sm text-zinc-600 font-medium mt-4 max-w-xl leading-relaxed">
-              Pendaftaran kuota online untuk mengamankan 1 dari 10 kuota pasien harian. Pelayanan di poli dilakukan secara <strong>First Come, First Served</strong> (pasien yang tiba lebih dulu di Ruang 103 akan dilayani lebih awal).
+              Pendaftaran kuota online untuk mengamankan 1 dari 6 kuota online harian (sisa 4 kuota dialokasikan untuk pasien pendaftaran langsung di loket Puskesmas). Pelayanan di poli dilakukan secara <strong>First Come, First Served</strong> (pasien yang tiba lebih dulu di Ruang 103 akan dilayani lebih awal).
             </p>
           </div>
           
